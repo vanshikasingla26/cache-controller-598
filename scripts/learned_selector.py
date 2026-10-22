@@ -88,13 +88,13 @@ def collect(a, lcs):
                 f = window_features(wk, seen, j * W)
                 ft = time.perf_counter() - t
                 feats.append({"trace": name, "split": sp, "window": j + 1, "feat_s": ft, **f})
-                if sp == "train":
+                if True:   # labels for every trace: each trace is TRAIN in one of the two folds
                     fn = os.path.join(a.tmp, "win.bin")
                     rec[j * W:(j + 1) * W].tofile(fn)
                     labs.append({"trace": name, "window": j + 1,
                                  **{p: native(lcs, fn, p, cap) for p in POL}})
                     os.remove(fn)
-            if sp == "test":   # cost of the simulation-based selector: 9 policies on the first half
+            if True:   # cost of the simulation-based selector: 9 policies on the first half
                 fn = os.path.join(a.tmp, "h1.bin")
                 rec[: len(rec) // 2].tofile(fn)
                 t = time.perf_counter()
@@ -107,6 +107,33 @@ def collect(a, lcs):
             pd.DataFrame(labs).to_csv(path_lab, index=False)
             pd.DataFrame(cost).to_csv(path_cost, index=False)
             print(f"  {name} ({sp}) done ({(time.time() - T0) / 60:.1f} min)", flush=True)
+    # backfill labels/cost for traces featurised in an earlier run as TEST only
+    labelled, costed = {r["trace"] for r in labs}, {r["trace"] for r in cost}
+    for tag, pat in DATASETS.items():
+        for path in sorted(glob.glob(pat)):
+            name = name_of(path, tag)
+            if name not in halves.index or (name in labelled and name in costed):
+                continue
+            cap = int(halves.loc[name, "capacity"])
+            rec = read_records(path, W * NWIN)
+            if name not in labelled:
+                for j in range(NWIN):
+                    fn = os.path.join(a.tmp, "win.bin")
+                    rec[j * W:(j + 1) * W].tofile(fn)
+                    labs.append({"trace": name, "window": j + 1, **{p: native(lcs, fn, p, cap) for p in POL}})
+                    os.remove(fn)
+            if name not in costed:
+                fn = os.path.join(a.tmp, "h1.bin")
+                rec[: len(rec) // 2].tofile(fn)
+                t = time.perf_counter()
+                for p in POL:
+                    native(lcs, fn, p, cap)
+                cost.append({"trace": name, "sim9_first_half_s": time.perf_counter() - t,
+                             "features_window3_s": [r for r in feats if r["trace"] == name and r["window"] == 3][0]["feat_s"]})
+                os.remove(fn)
+            pd.DataFrame(labs).to_csv(path_lab, index=False)
+            pd.DataFrame(cost).to_csv(path_cost, index=False)
+            print(f"  backfilled {name} ({(time.time() - T0) / 60:.1f} min)", flush=True)
     return pd.DataFrame(feats), pd.DataFrame(labs), pd.DataFrame(cost), halves
 
 
@@ -131,6 +158,54 @@ def fit_predict(make, Xtr, Ytr, Xte):
     return out
 
 
+def run_fold(fold, feats, labs, halves_raw, fcols):
+    """Train on this fold's TRAIN traces, evaluate on its TEST traces. Returns (rows, info)."""
+    hv = split(halves_raw[halves_raw.one_hit <= 0.90], fold).set_index("trace")
+    sp = hv["split"]
+    f = feats.assign(split=feats.trace.map(sp))
+    tr = f[f.split == "train"].merge(labs.assign(window=labs.window - 1), on=["trace", "window"])
+    X = tr[fcols].values
+    Y = np.stack([(tr[p] - tr["ARC"]).values * 100 for p in POL], axis=1)
+    groups = tr.trace.values
+    cv = {}
+    for name, make in make_models().items():
+        g = []
+        for t in np.unique(groups):
+            m = groups == t
+            P = fit_predict(make, X[~m], Y[~m], X[m])
+            g += [Y[i, k] for i, k in zip(np.flatnonzero(m), P.argmax(axis=1))]
+        cv[name] = float(np.mean(g))
+    best = max(cv, key=cv.get)
+    t = time.perf_counter()
+    te = f[(f.split == "test") & (f.window == 3)].set_index("trace")
+    fit_s = 0.0
+    models = {}
+    for i, p in enumerate(POL):
+        if p == "ARC":
+            continue
+        t0 = time.perf_counter()
+        models[p] = make_models()[best]().fit(X, Y[:, i])
+        fit_s += time.perf_counter() - t0
+    t0 = time.perf_counter()
+    P = np.zeros((len(te), len(POL)))
+    for i, p in enumerate(POL):
+        if p != "ARC":
+            P[:, i] = models[p].predict(te[fcols].values)
+    pred_s = (time.perf_counter() - t0) / max(1, len(te))
+    rows = []
+    for (trace, _), pred in zip(te.iterrows(), P):
+        h = hv.loc[trace]
+        choice, pick = POL[int(np.argmax(pred))], max(POL, key=lambda p: h[f"h1_{p}"])
+        rows.append({"fold": fold, "trace": trace, "dataset": trace.split(":")[0], "learned_choice": choice,
+                     "first_half_choice": pick, "learned": (h[f"h2_{choice}"] - h["h2_ARC"]) * 100,
+                     "always_S3FIFO": (h["h2_S3FIFO"] - h["h2_ARC"]) * 100,
+                     "pick_first_half": (h[f"h2_{pick}"] - h["h2_ARC"]) * 100,
+                     "oracle": (max(h[f"h2_{p}"] for p in POL) - h["h2_ARC"]) * 100})
+    info = {"fold": fold, "train_rows": len(tr), "train_traces": tr.trace.nunique(), "cv": cv, "model": best,
+            "always_S3FIFO_cv": float(Y[:, POL.index("S3FIFO")].mean()), "fit_s": fit_s, "predict_s": pred_s}
+    return rows, info
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/real")
@@ -138,65 +213,40 @@ def main():
     a = ap.parse_args()
     import libcachesim as lcs
     os.makedirs(a.tmp, exist_ok=True)
-    feats, labs, cost, halves = collect(a, lcs)
+    feats, labs, cost, _ = collect(a, lcs)
+    halves_raw = pd.read_csv(os.path.join(a.out, "policy_halves_raw.csv"))
     fcols = [c for c in feats.columns if c not in ("trace", "split", "window", "feat_s")]
-
-    # training rows: features of window j -> gain over ARC on window j+1 (TRAIN traces only)
-    tr = feats[feats.split == "train"].merge(
-        labs.assign(window=labs.window - 1), on=["trace", "window"], suffixes=("", "_next"))
-    X = tr[fcols].values
-    Y = np.stack([(tr[p] - tr["ARC"]).values * 100 for p in POL], axis=1)
-    groups = tr.trace.values
-    print(f"\ntraining rows: {len(tr)} from {tr.trace.nunique()} TRAIN traces, {len(fcols)} features")
-
-    # model choice: leave-one-trace-out CV on TRAIN (realised gain of the argmax choice)
-    L = []
-    cv = {}
-    for name, make in make_models().items():
-        g = []
-        for t in np.unique(groups):
-            te = groups == t
-            P = fit_predict(make, X[~te], Y[~te], X[te])
-            g += [Y[i_row, k] for i_row, k in zip(np.flatnonzero(te), P.argmax(axis=1))]
-        cv[name] = float(np.mean(g))
-    s3 = POL.index("S3FIFO")
-    L.append("leave-one-trace-out CV on TRAIN, mean realised gain vs ARC (points, next window): " +
-             ", ".join(f"{k} {v:+.2f}" for k, v in cv.items()) + f"   (always-S3FIFO {Y[:, s3].mean():+.2f})")
-    best = max(cv, key=cv.get)
-    L.append(f"chosen model: {best}")
-
-    # final fit on all TRAIN rows, decide on TEST traces from window 3, evaluate on second half
-    te = feats[(feats.split == "test") & (feats.window == 3)].set_index("trace")
-    P = fit_predict(make_models()[best], X, Y, te[fcols].values)
-    rows = []
-    for (t, _), pred in zip(te.iterrows(), P):
-        h = halves.loc[t]
-        choice = POL[int(np.argmax(pred))]
-        pick = max(POL, key=lambda p: h[f"h1_{p}"])
-        rows.append({"trace": t, "learned_choice": choice, "first_half_choice": pick,
-                     "learned": (h[f"h2_{choice}"] - h["h2_ARC"]) * 100,
-                     "always_S3FIFO": (h["h2_S3FIFO"] - h["h2_ARC"]) * 100,
-                     "pick_first_half": (h[f"h2_{pick}"] - h["h2_ARC"]) * 100,
-                     "oracle": (max(h[f"h2_{p}"] for p in POL) - h["h2_ARC"]) * 100})
+    rows, infos = [], []
+    for fold in (0, 1):
+        r, info = run_fold(fold, feats, labs, halves_raw, fcols)
+        rows += r
+        infos.append(info)
     res = pd.DataFrame(rows)
     res.to_csv(os.path.join(a.out, "selector_test_results.csv"), index=False)
-    L.append(f"\nTEST: {len(res)} held-out traces, second-half hit rate vs ARC (points), mean [95% CI over traces]")
-    for c in ("learned", "always_S3FIFO", "pick_first_half", "oracle"):
-        m, lo, hi = boot(res[c].values)
-        L.append(f"  {c:<16} {m:+.2f} [{lo:+.2f},{hi:+.2f}]   positive on {int((res[c] > 0).sum())}/{len(res)}")
-    d = res.learned - res.always_S3FIFO
-    m, lo, hi = boot(d.values)
-    L.append(f"  learned minus always_S3FIFO: {m:+.2f} [{lo:+.2f},{hi:+.2f}]")
-    L.append(f"  learned picks the same policy as the first-half simulation on "
-             f"{int((res.learned_choice == res.first_half_choice).sum())}/{len(res)} traces")
-    L.append(f"\ncost per decision (TEST traces): features on 500k requests {cost.features_window3_s.mean():.2f} s "
-             f"vs simulating 9 policies on 1.5M requests {cost.sim9_first_half_s.mean():.2f} s "
-             f"(ratio {cost.sim9_first_half_s.mean() / cost.features_window3_s.mean():.1f}x; Python features vs native C++ sims)")
-    L.append("\nchoices on TEST:\n" + res[["trace", "learned_choice", "first_half_choice"]].to_string(index=False))
+    L = []
+    for info in infos:
+        L.append(f"fold {info['fold']}: {info['train_rows']} training rows from {info['train_traces']} traces; "
+                 f"leave-one-trace-out CV on TRAIN (next-window gain vs ARC): "
+                 + ", ".join(f"{k} {v:+.2f}" for k, v in info["cv"].items())
+                 + f", always-S3FIFO {info['always_S3FIFO_cv']:+.2f}; chosen {info['model']}")
+    for name, sub in [("fold 0 (original split)", res[res.fold == 0]), ("2-FOLD, all traces", res)]:
+        L.append(f"\n{name}: {len(sub)} test traces, second-half hit rate vs ARC (points), mean [95% CI], positive")
+        for c in ("learned", "always_S3FIFO", "pick_first_half", "oracle"):
+            m, lo, hi = boot(sub[c].values)
+            L.append(f"  {c:<16} {m:+.2f} [{lo:+.2f},{hi:+.2f}]   {int((sub[c] > 0).sum())}/{len(sub)}")
+        m, lo, hi = boot((sub.learned - sub.always_S3FIFO).values)
+        L.append(f"  learned minus always_S3FIFO: {m:+.2f} [{lo:+.2f},{hi:+.2f}]; same choice as first-half "
+                 f"simulation on {int((sub.learned_choice == sub.first_half_choice).sum())}/{len(sub)}")
+    L.append("\nhidden costs (learned selector):")
+    L.append(f"  training time (8 regressors, all TRAIN rows): " + ", ".join(f"fold {i['fold']} {i['fit_s']:.2f} s" for i in infos))
+    L.append(f"  inference per decision: {np.mean([i['predict_s'] for i in infos]) * 1e3:.2f} ms")
+    L.append(f"  feature extraction per decision (500k requests, Python): {cost.features_window3_s.mean():.2f} s; "
+             f"simulation-based selector (9 native policies on 1.5M requests): {cost.sim9_first_half_s.mean():.2f} s")
+    L.append("  feature state: one last-seen index per object seen so far (dictionary); see selector_state.csv")
     txt = "\n".join(L)
     print(txt)
-    with open(os.path.join(a.out, "selector_summary.txt"), "w") as f:
-        f.write(txt + "\n")
+    with open(os.path.join(a.out, "selector_summary.txt"), "w") as fh:
+        fh.write(txt + "\n")
 
 
 if __name__ == "__main__":

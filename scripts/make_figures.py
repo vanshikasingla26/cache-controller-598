@@ -142,31 +142,24 @@ if __name__ == "__main__":
 
 
 def fig_policy_selection(out):
-    from scripts.policy_selection_headroom import POL, split
-    d = split(pd.read_csv(f"{R}/policy_halves_raw.csv"))
-    d = d[d.one_hit <= 0.90]
-    tr, te = d[d.split == "train"], d[d.split == "test"]
-    best = max(POL, key=lambda p: tr[f"h2_{p}"].mean())
-    arc = te["h2_ARC"]
-    pick = te.apply(lambda r: r[f"h2_{max(POL, key=lambda p: r[f'h1_{p}'])}"], axis=1)
-    vals = {f"always {best}\n(best on train)": (te[f"h2_{best}"] - arc) * 100,
-            "pick best from\nfirst half (causal)": (pick - arc) * 100,
-            "oracle per trace\n(ceiling)": (te[[f"h2_{p}" for p in POL]].max(axis=1) - arc) * 100}
+    sel = pd.read_csv(f"{R}/selector_test_results.csv")          # both folds, every trace tested once
+    vals = {"always S3-FIFO\n(best on train)": sel.always_S3FIFO, "learned cheap\nselector": sel.learned,
+            "pick best from first\nhalf (simulation)": sel.pick_first_half, "oracle per trace\n(ceiling)": sel.oracle}
     rng = np.random.default_rng(0)
-    fig, ax = plt.subplots(figsize=(6.5, 3.4))
+    fig, ax = plt.subplots(figsize=(7.5, 3.5))
     for i, (lab, v) in enumerate(vals.items()):
         v = v.values
         m = v[rng.integers(0, len(v), size=(10_000, len(v)))].mean(axis=1)
         lo, hi = np.percentile(m, [2.5, 97.5])
         ax.bar(i, v.mean(), yerr=[[v.mean() - lo], [hi - v.mean()]], capsize=4,
                color="tab:green" if lo > 0 else "tab:gray")
-        ax.scatter(np.full(len(v), i) + rng.uniform(-0.15, 0.15, len(v)), v, s=10, color="k", zorder=3)
+        ax.scatter(np.full(len(v), i) + rng.uniform(-0.15, 0.15, len(v)), v, s=8, color="k", zorder=3)
     ax.axhline(0, color="k", lw=0.8)
-    ax.set_xticks(range(3))
+    ax.set_xticks(range(len(vals)))
     ax.set_xticklabels(list(vals), fontsize=8)
     ax.set_ylabel("hit rate vs ARC, second half (points)")
-    ax.set_title(f"Policy selection on {len(te)} held-out real traces (MSR, CloudPhysics, Alibaba, Meta)\n"
-                 "bars: mean with 95% CI over traces; dots: individual traces", fontsize=8)
+    ax.set_title(f"Policy selection, {len(sel)} real traces (MSR, CloudPhysics, Alibaba, Meta), two folds\n"
+                 "bars: mean with 95% CI over traces (green = CI above zero); dots: individual traces", fontsize=8)
     fig.tight_layout()
     fig.savefig(f"{out}/fig5_policy_selection.png", dpi=160)
     plt.close(fig)

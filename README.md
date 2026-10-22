@@ -1,49 +1,100 @@
-# cache-controller-598: shift-aware cache controller (CSE 598, Fall 2026)
+# cache-controller-598: shift-aware caching and policy selection on real block-storage traces
 
-Team project: Vanshika Singla and Shubham Harkare.
+Can a cache react to workload shifts faster than an adaptive policy like ARC, and if not, where is the
+real room to improve? This repository contains the simulator, detectors, learned components,
+experiments and results. Unless noted, numbers are on real block-storage traces, in percentage points
+of hit rate versus ARC, with 95% bootstrap confidence intervals over traces or volumes.
 
-## Provenance
-The simulator, the ARC / LRU / LFU / Belady implementations, the shift detector, the learned
-re-ranker and the experiment pipeline below were written by Shubham Harkare and imported into this
-repository from his repo (snapshot `feature_002`; its status section is dated Sep 29, 2026).
-Everything added afterwards is in `git log`. Additions so far:
+## Results at a glance
+1. **Policy selection, 37 real traces from 4 sources** (MSR-Cambridge, CloudPhysics, Alibaba, Meta; 33
+   after excluding pure scans). Two folds, so every trace is a test trace exactly once (fig5):
+   | selector (second half of each trace) | vs ARC | positive |
+   |---|---|---|
+   | pick the policy that was best on the first half (simulates 9 policies) | **+0.63 [+0.28, +1.00]** | 21/33 |
+   | always S3-FIFO (best single policy on TRAIN in both folds) | +0.29 [-0.15, +0.74] | 19/33 |
+   | learned cheap selector (500k-request features, no simulation) | +0.25 [-0.23, +0.68] | 18/33 |
+   | oracle: best policy per trace | +0.93 [+0.62, +1.29] | 26/33 |
 
-* `scripts/lru_gate_control.py`: control experiment, ARC that behaves like LRU while the shift gate
-  is on (no model), same held-out servers and detector as `scripts/experiment.py`.
-* `results/lru_gate/`, `results/full/experiment_ci.txt`: control results and the 95% bootstrap CIs
-  computed from `results/full/experiment_raw.csv` (the original script only printed them).
+   The learned selector decides about 19x faster than simulating, but it is no better than always using
+   S3-FIFO (difference -0.04 [-0.70, +0.54]); its first-fold result (+0.45) did not replicate.
+2. **Shift-aware controller on real MSR traces** (12 spliced pairs, 4 held-out volumes; fig2, fig3). With
+   the true shift time: +2.6 points in the 50k accesses after the shift (+0.16 overall). With a real
+   detector it loses to ARC: -0.84 overall (learned re-ranker), -1.68 (model-free), -0.81 with a gate tuned
+   for hit rate. Even perfect window-by-window LRU-like switching would gain only about +0.7 overall.
+3. **Controlled one-dimension shifts injected into real volumes** (fig4): ARC is not further behind the
+   clairvoyant optimum right after a shift than in steady state, and an LRU-like action hurts after scans.
+4. **Baselines** (fig1, `results/real/baselines_*.csv`): our ARC is bit-identical to libCacheSim's ARC on
+   all 37 traces; no single policy wins everywhere.
+5. **Synthetic servers** (one generator family, 8 held-out servers): the detector-gated learned re-ranker
+   gains +2.50 points in transition windows; a model-free control gets +1.52 of that.
 
-* `shiftcache/detector_adaptive.py`: self-calibrating detector (thresholds are median - z * robust
-  scale of the trace's own recent overlap values, not fixed numbers). Drop-in for `ShiftDetector`.
-  Decision logic is a pure function of the overlap series, tested online == offline.
-* `shiftcache/realdata.py`, `scripts/fetch_sample_trace.py`: loader for libCacheSim `oracleGeneral`
-  traces and a download of the small real CloudPhysics sample (113,872 requests).
-* `scripts/detector_eval.py`, `results/detector_eval/`: fixed vs adaptive detector.
-* `scripts/lcs_baselines.py`, `results/baselines/`: LRU, LFU, ARC, LeCaR, CACHEUS, S3-FIFO, SIEVE,
-  W-TinyLFU, LHD (libCacheSim) plus MIN on any trace.
-* `tests/test_detector_adaptive.py`.
+## Reproducing
+```bash
+pip install -r requirements.txt
+python -m pytest -q                       # 38 tests, about 30 seconds
+```
+**Data.** Download the `oracleGeneral` files from https://github.com/cacheMon/cache_dataset (rows
+"Microsoft Cambridge", "CloudPhysics", "Alibaba Block", "MetaStorage", column "OracleGeneral format")
+and place them as:
+```
+data/msr/msr_<volume>_oracleGeneral.zst      hm_0 prn_0 prn_1 proj_0 proj_1 proj_2 proj_4 prxy_0
+                                             src1_0 src1_1 usr_1 usr_2 web_2
+data/cp/w<id>.oracleGeneral.bin.zst          w32 w40 w41 w42 w43 w100-w106
+data/ali/alibabaBlock_<id>.oracleGeneral.zst 0 11 14 15 100 150 165 166
+data/meta/block_traces_<i>.oracleGeneral.bin.zst  1-4
+```
+`python scripts/make_slice.py <file> <out.bin> --n 3000000` cuts a large trace down if needed.
 
-## Learned cheap policy selector (step 4, `scripts/learned_selector.py`)
-Protocol fixed before results: same 33 traces, same train/test split and second-half hit rates as the
-policy-selection section. Features = one pass over the last 500k requests (unique ratio, one-hit share,
-top-1%/10% access share, sequential share, first-access share, inter-reference-gap histogram); no cache
-simulation. One regressor per policy predicts its gain over ARC on the next window; trained on 105 rows
-from 21 TRAIN traces; model chosen by leave-one-trace-out CV (shallow gradient boosting).
+**Run** (single core; approximate times):
+```bash
+python -u scripts/real_baselines.py --dir data/msr --out results/real                     # ~15 min
+for t in cp ali meta; do python -u scripts/real_baselines.py --dir data/$t --pattern '*.zst' --tag $t --out results/real; done  # ~35 min
+python -u scripts/real_experiment.py --dir data/msr --out results/real --side 500000 \
+       --natural-n 1500000 --train-pairs 10 --test-pairs 12 --skip-always                  # ~70 min
+python -u scripts/real_gate_tuning.py --dir data/msr --out results/real                   # ~7 min
+python -u scripts/real_controlled_shifts.py --dir data/msr --out results/real             # ~15 min
+python -u scripts/policy_selection_headroom.py --out results/real                         # ~15 min
+python -u scripts/learned_selector.py --out results/real                                  # ~15 min
+python scripts/make_figures.py --out results/figures
+python -u scripts/experiment.py && python -u scripts/lru_gate_control.py                  # synthetic
+```
+All scripts write their raw CSVs and summaries to `results/`; long runs save after every trace and
+resume where they stopped.
 
-| 12 held-out traces, second half vs ARC (points) | mean [95% CI] | positive |
+## Baseline configuration
+libCacheSim 0.3.5 Python bindings with default parameters for every policy: LRU, LFU, ARC, LeCaR, CACHEUS,
+S3-FIFO, SIEVE, W-TinyLFU, LHD, and Belady (MIN, offline). Objects are unit size (`ignore_obj_size`), the
+cache holds 5% of the unique objects of the trace slice (1% and 10% also reported), caches start cold, and
+each trace is cut to its first N requests (3M unless stated). The controller experiments use this
+repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
+
+## Learned cheap policy selector (`scripts/learned_selector.py`, `results/real/selector_*`)
+Protocol fixed before results; same 33 traces, splits and second-half hit rates as the policy-selection
+section. Features = one pass over the last 500k requests (unique ratio, one-hit share, top-1%/10% access
+share, sequential share, first-access share, inter-reference-gap histogram); no cache simulation. One
+regressor per policy predicts its gain over ARC on the next window; the model (ridge or shallow gradient
+boosting) is chosen per fold by leave-one-trace-out CV on that fold's TRAIN traces.
+
+| second half vs ARC (points) | fold 0 (12 test traces) | both folds (33 test traces) |
 |---|---|---|
-| learned selector (features of 500k requests) | +0.46 [+0.11, +0.82] | 7/12 |
-| always S3-FIFO | +0.23 [-0.25, +0.66] | 9/12 |
-| pick from first half (simulates 9 policies on 1.5M requests) | +0.70 [+0.34, +1.04] | 10/12 |
-| oracle per trace | +0.78 [+0.49, +1.07] | 11/12 |
+| learned selector | +0.45 [+0.11, +0.81], 7/12 | +0.25 [-0.23, +0.68], 18/33 |
+| always S3-FIFO | +0.23 [-0.25, +0.66], 9/12 | +0.29 [-0.15, +0.74], 19/33 |
+| pick from first half (simulation) | +0.70 [+0.34, +1.04], 10/12 | +0.63 [+0.28, +1.00], 21/33 |
+| oracle per trace | +0.78 [+0.49, +1.07], 11/12 | +0.93 [+0.62, +1.29], 26/33 |
 
-Learned minus always-S3-FIFO: +0.23 [-0.36, +0.94] (not significant). Cost per decision: 0.56 s of
-Python feature extraction vs 10.4 s for 9 native libCacheSim simulations (about 18x; not a like-for-like
-comparison, different languages and window lengths).
-**Reading, honestly:** the learned selector beats ARC on held-out traces with a CI above zero at a fraction
-of the decision cost, and recovers about 60% of the simulation selector's gain. It is NOT reliably better
-than always using S3-FIFO, and in leave-one-trace-out CV on TRAIN both learned models were below ARC
-(ridge -0.16, GBR -0.08) while always-S3-FIFO was +0.05. Evidence is mixed and data-limited (105 rows).
+Learned minus always-S3-FIFO over both folds: -0.04 [-0.70, +0.54]; the learned choice equals the
+simulation's choice on 11/33 traces. Leave-one-trace-out CV on TRAIN: fold 0 ridge -0.16, GBR -0.10
+(always-S3-FIFO +0.05); fold 1 ridge +0.44, GBR +0.38 (always-S3-FIFO +0.14). The fold-0 test number moves
+slightly between runs (+0.46 vs +0.45) because subsampled boosting depends on training-row order.
+
+**Hidden costs.** Training (8 regressors): 1.1 s (fold 0), 0.01 s (fold 1). Inference: 0.5 ms per decision.
+Feature extraction: 0.59 s per 500k requests in Python, vs 11.2 s for simulating 9 policies on 1.5M
+requests natively (about 19x; different languages and window lengths, so only indicative). State: one
+last-seen index per object seen so far, median 0.74M entries at decision time (about 12 MB at 16 bytes per
+entry, at most 24 MB; `results/real/selector_state.csv`).
+
+**Reading:** a cheap learned selector is feasible, but with 60-105 training rows it does not beat always
+using S3-FIFO. The simulation-based selector is the robust positive result.
 
 ## Policy selection across four real datasets (`scripts/policy_selection_headroom.py`, fig5)
 Data: 37 real block traces, first 3M requests each: MSR-Cambridge 13, CloudPhysics 12, Alibaba 8,
@@ -60,7 +111,11 @@ objects, libCacheSim native, 9 online policies.
 | pick the policy that was best on the first half (causal, no ML) | **+0.70 [+0.34, +1.04]** | 10/12 |
 | oracle: best policy per trace (ceiling) | +0.78 [+0.49, +1.07] | 11/12 |
 
-Pick-from-first-half vs always-S3-FIFO: +0.47 [-0.02, +1.09]. Per dataset (all traces), pick vs
+Two-fold check (every trace tested once, `results/real/policy_selection_2fold.csv`): pick-from-first-half
++0.63 [+0.28, +1.00] (21/33), always-S3-FIFO +0.29 [-0.15, +0.74], oracle +0.93 [+0.62, +1.29];
+pick minus always-S3-FIFO +0.34 [-0.01, +0.72]. Per dataset (pick vs ARC): Alibaba +1.03, Meta +1.31,
+MSR +0.60, CloudPhysics +0.15.
+Pick-from-first-half vs always-S3-FIFO (fold 0 only): +0.47 [-0.02, +1.09]. Per dataset (all traces), pick vs
 always-S3-FIFO: Meta +2.59, CloudPhysics +0.08, MSR +0.03, Alibaba -0.06.
 
 **Reading:** choosing the policy per trace from its own recent history beats ARC on held-out traces from
@@ -152,23 +207,22 @@ Means over the 4 held-out test volumes:
    policy at 1% and 5%; S3-FIFO is best at 10% (0.2447). CACHEUS 0.1797 < ARC 0.1886 at 5%.
    Clairvoyant MIN reaches 0.2073 / 0.2968 / 0.3710. See `results/baselines/`.
 
-## Known issues in the imported snapshot
-* The `OracleTailARC` docstring and the headroom text call the oracle a ceiling no learned
-  re-ranker can beat. `gbt[det]` beats `Oracle-X[det]` on all 8 held-out servers, so it is a greedy
-  per-decision oracle, not a ceiling.
+## Known issues
+* The oracle re-ranker (`shiftcache/policies/oracle.py`) is a greedy per-decision oracle, not a ceiling:
+  `gbt[det]` beats `Oracle-X[det]` on all 8 synthetic held-out servers (docstring corrected).
 * The detector-gated GBT gain (+2.50 points in transition windows, `results/full/experiment_ci.txt`)
   is on synthetic servers from one generator family. A model-free control (ARC acting like LRU
   while the gate is on) reaches +1.52, so the learned model's increment is about +0.98 points.
 
 ---
 
-# shiftcache: Shift-Aware Cache Controller (CSE 598, Fall 2026)
+## Code overview: synthetic pipeline
 
 Trace-driven block-cache simulator for the shift-aware controller project:
 a shift detector that reads only the raw request stream, plus a learned
 re-ranker that overrides ARC's eviction choice only while a shift is flagged.
 
-## Layout
+### Layout
 ```
 shiftcache/
   trace.py        MSR-Cambridge loader (4KB block splitting), synthetic + spliced traces w/ ground truth
@@ -194,19 +248,19 @@ scripts/
 tests/               pytest suite (25 tests); ARC and LRU verified bit-exact vs libCacheSim
 ```
 
-## Setup
+### Setup
 ```
 pip install numpy pandas matplotlib pytest scikit-learn libcachesim
 python -m pytest -q tests          # expect 25 passed, 0 skipped
 ```
 Run everything from the repo root (scripts import `shiftcache.*` and `scripts.*`).
 
-## Data
+### Data
 MSR-Cambridge: SNIA IOTTA repository ("MSR Cambridge Traces"). Put files in `data/`
 (e.g. `data/web_0.csv.gz`). Columns: Timestamp, Hostname, DiskNumber, Type, Offset, Size, ResponseTime.
 CloudPhysics: via the cacheMon collection (libCacheSim format), not yet integrated.
 
-## Run
+### Run
 Baselines and headroom:
 ```
 python scripts/run_baselines.py --synthetic
@@ -230,7 +284,7 @@ window), `--w-max` (blend cap), `--models lr gbt`, `--skip-always gbt` (skip the
 `experiment_summary.csv`, `detection_vs_arc.csv`; `experiment_raw.partial.csv` is written after
 each test server. Needs ~2-3 GB RAM.
 
-## Pipeline
+### Pipeline
 1. **Detector** (`detector.py`). Each 1,000-access window becomes a histogram of log2 reuse gaps
    plus a first-access bin. Overlap `sum(min(p, q))` against the mean of the previous `ref_windows`
    windows. Start: overlap < `start_thresh` for `persist` windows. End: after `min_hold` windows,
@@ -247,7 +301,7 @@ each test server. Needs ~2-3 GB RAM.
 6. **Gates compared** (RQ4): always-on (HALP-style), random windows with the same lengths as the
    detector's, ground-truth windows, detector.
 
-## Design decisions (record in the report)
+### Design decisions (record in the report)
 - Requests split into 4KB blocks; block hit rate == byte hit rate.
 - Write-allocate by default (`simulate(..., write_allocate=False)` for read-cache mode).
 - Cache size = fraction of the trace's unique-block footprint.
@@ -264,7 +318,7 @@ each test server. Needs ~2-3 GB RAM.
 - Training rows come from detector-flagged windows with ARC making the decisions.
 - Model inference uses numpy paths so overhead numbers reflect the model, not sklearn call cost.
 
-## Status (Sep 29, 2026)
+### Status of the synthetic pipeline (as of Sep 29, 2026)
 Done: simulator + baselines, oracle headroom, detector with tuning, re-ranker pipeline, gating
 ablations, bootstrap CIs; all on SYNTHETIC traces.
 
@@ -283,3 +337,29 @@ Open issues:
 Next: MSR-Cambridge traces (baselines, spliced-pair headroom, real-data mode in `experiment.py`),
 full 8/8 synthetic run, CloudPhysics, libCacheSim baselines (LeCaR, CACHEUS, S3-FIFO, SIEVE),
 cache-size and k sweeps.
+
+## Limitations
+* Real results use the first 0.5M-3M requests of each trace, unit-size objects and mostly a 5% cache.
+* Spliced shifts are artificial (a full swap between two real volumes); controlled shifts are injected.
+* Test sets are small (4 held-out MSR volumes for the controller; 33 traces over two folds for selection).
+* The simulation-based selector's cost is measured but not optimised (sampled simulation would cut it).
+* The learned selector has 60-105 training rows; more traces are the obvious next step.
+
+## References
+* N. Megiddo, D. Modha. ARC: A Self-Tuning, Low Overhead Replacement Cache. FAST 2003.
+* Z. Song et al. HALP: Heuristic Aided Learned Preference Eviction Policy for YouTube Content Delivery Network. NSDI 2023.
+* D. Yang, D. Berger, K. Li, W. Lloyd. A Learned Cache Eviction Framework with Minimal Overhead (MAT). arXiv 2023.
+* Xia et al. Learning-Augmented Heuristics: Simple, yet Smart, Robust and Interpretable Cache Eviction. OSDI 2026.
+* N. Beckmann, H. Chen, A. Cidon. LHD: Improving Cache Hit Rate by Maximizing Hit Density. NSDI 2018.
+* L. Rodriguez et al. Learning Cache Replacement with CACHEUS. FAST 2021.
+* G. Vietri et al. Driving Cache Replacement with ML-based LeCaR. HotStorage 2018.
+* J. Yang et al. FIFO Queues are All You Need for Cache Eviction (S3-FIFO). SOSP 2023.
+* Y. Zhang et al. SIEVE is Simpler than LRU. NSDI 2024.
+* G. Einziger, R. Friedman, B. Manes. TinyLFU: A Highly Efficient Cache Admission Policy. ACM TOS 2017.
+* C. Waldspurger et al. Cache Modeling and Optimization using Miniature Simulations. USENIX ATC 2017.
+* libCacheSim (https://github.com/1a1a11a/libCacheSim) and the cacheMon cache_dataset collection
+  (https://github.com/cacheMon/cache_dataset).
+* Traces: D. Narayanan, A. Donnelly, A. Rowstron. Write Off-Loading (MSR-Cambridge). FAST 2008;
+  C. Waldspurger et al. Efficient MRC Construction with SHARDS (CloudPhysics). FAST 2015;
+  J. Li et al. An In-Depth Analysis of Cloud Block Storage Workloads in Large-Scale Production (Alibaba).
+  IISWC 2020; Meta storage traces distributed with CacheLib.

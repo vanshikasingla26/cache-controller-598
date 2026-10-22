@@ -1,27 +1,22 @@
-leave-one-trace-out CV on TRAIN, mean realised gain vs ARC (points, next window): ridge -0.16, gbr -0.08   (always-S3FIFO +0.05)
-chosen model: gbr
+fold 0: 105 training rows from 21 traces; leave-one-trace-out CV on TRAIN (next-window gain vs ARC): ridge -0.16, gbr -0.10, always-S3FIFO +0.05; chosen gbr
+fold 1: 60 training rows from 12 traces; leave-one-trace-out CV on TRAIN (next-window gain vs ARC): ridge +0.44, gbr +0.38, always-S3FIFO +0.14; chosen ridge
 
-TEST: 12 held-out traces, second-half hit rate vs ARC (points), mean [95% CI over traces]
-  learned          +0.46 [+0.11,+0.82]   positive on 7/12
-  always_S3FIFO    +0.23 [-0.25,+0.66]   positive on 9/12
-  pick_first_half  +0.70 [+0.34,+1.04]   positive on 10/12
-  oracle           +0.78 [+0.49,+1.07]   positive on 11/12
-  learned minus always_S3FIFO: +0.23 [-0.36,+0.94]
-  learned picks the same policy as the first-half simulation on 2/12 traces
+fold 0 (original split): 12 test traces, second-half hit rate vs ARC (points), mean [95% CI], positive
+  learned          +0.45 [+0.11,+0.81]   7/12
+  always_S3FIFO    +0.23 [-0.25,+0.66]   9/12
+  pick_first_half  +0.70 [+0.34,+1.04]   10/12
+  oracle           +0.78 [+0.49,+1.07]   11/12
+  learned minus always_S3FIFO: +0.23 [-0.36,+0.93]; same choice as first-half simulation on 3/12
 
-cost per decision (TEST traces): features on 500k requests 0.56 s vs simulating 9 policies on 1.5M requests 10.43 s (ratio 18.5x; Python features vs native C++ sims)
+2-FOLD, all traces: 33 test traces, second-half hit rate vs ARC (points), mean [95% CI], positive
+  learned          +0.25 [-0.23,+0.68]   18/33
+  always_S3FIFO    +0.29 [-0.15,+0.74]   19/33
+  pick_first_half  +0.63 [+0.28,+1.00]   21/33
+  oracle           +0.93 [+0.62,+1.29]   26/33
+  learned minus always_S3FIFO: -0.04 [-0.70,+0.54]; same choice as first-half simulation on 11/33
 
-choices on TEST:
-              trace learned_choice first_half_choice
-          msr:prn_0            ARC          WTinyLFU
-         msr:proj_0         S3FIFO            S3FIFO
-         msr:prxy_0        Cacheus          WTinyLFU
-          msr:usr_2            LFU          WTinyLFU
-             cp:w32         S3FIFO               ARC
-             cp:w41          LeCaR          WTinyLFU
-             cp:w43            ARC            S3FIFO
- ali:alibabaBlock_0       WTinyLFU          WTinyLFU
-ali:alibabaBlock_11         S3FIFO          WTinyLFU
-ali:alibabaBlock_15         S3FIFO          WTinyLFU
-meta:block_traces_2          LeCaR               LHD
-meta:block_traces_4          LeCaR               LRU
+hidden costs (learned selector):
+  training time (8 regressors, all TRAIN rows): fold 0 1.12 s, fold 1 0.01 s
+  inference per decision: 0.50 ms
+  feature extraction per decision (500k requests, Python): 0.59 s; simulation-based selector (9 native policies on 1.5M requests): 11.20 s
+  feature state: one last-seen index per object seen so far (dictionary); see selector_state.csv

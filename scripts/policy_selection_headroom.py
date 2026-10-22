@@ -28,9 +28,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shiftcache.realdata import read_records  # noqa: E402
 
 POL = ["LRU", "LFU", "ARC", "LeCaR", "Cacheus", "S3FIFO", "Sieve", "WTinyLFU", "LHD"]
-DATASETS = {"msr": "/mnt/user-data/uploads/msr_*_oracleGeneral.zst",
-            "cp": "/home/claude/data/cp/*.zst", "ali": "/home/claude/data/ali/*.zst",
-            "meta": "/home/claude/data/meta/*.zst"}
+# expected layout (see README "Reproducing"): data/msr, data/cp, data/ali, data/meta
+DATASETS = {"msr": "data/msr/msr_*_oracleGeneral.zst", "cp": "data/cp/*.zst",
+            "ali": "data/ali/*.zst", "meta": "data/meta/*.zst"}
 
 
 def name_of(path, tag):
@@ -92,11 +92,15 @@ def main():
     df = pd.DataFrame(rows)
     df.to_csv(os.path.join(a.out, "policy_halves_raw.csv"), index=False)
     print(analyse(df))
+    txt, r = analyse_2fold(df)
+    r.to_csv(os.path.join(a.out, "policy_selection_2fold.csv"), index=False)
+    print("\n" + txt)
 
 
-def split(df):
+def split(df, fold=0):
     """Train/test split fixed in advance: within each dataset, sort traces by name and assign groups
-    alternately; related neighbours (cp w100-w106, ali 165/166) form one group."""
+    alternately; related neighbours (cp w100-w106, ali 165/166) form one group. fold=1 swaps the
+    roles, so over the two folds every trace is a test trace exactly once."""
     def group(name):
         if name.startswith("cp:w10"):
             return "cp:w10x"
@@ -109,7 +113,7 @@ def split(df):
     for ds, sub in df.groupby("dataset"):
         groups = sorted(sub.group.unique())
         for i, g in enumerate(groups):
-            if i % 2 == 0:
+            if i % 2 == fold:
                 df.loc[df.group == g, "split"] = "train"
     return df
 
@@ -119,6 +123,36 @@ def boot(x, B=10_000, seed=0):
     rng = np.random.default_rng(seed)
     m = x[rng.integers(0, len(x), size=(B, len(x)))].mean(axis=1)
     return float(x.mean()), float(np.percentile(m, 2.5)), float(np.percentile(m, 97.5))
+
+
+def fold_rows(df, fold, max_onehit=0.90):
+    """Per-test-trace gains for one fold (best fixed policy chosen on that fold's TRAIN)."""
+    d = split(df[df.one_hit <= max_onehit], fold)
+    tr, te = d[d.split == "train"], d[d.split == "test"]
+    best = max(POL, key=lambda p: tr[f"h2_{p}"].mean())
+    out = te[["dataset", "trace"]].copy()
+    out["fold"], out["best_fixed"] = fold, best
+    arc = te["h2_ARC"]
+    out["always_best_fixed"] = (te[f"h2_{best}"] - arc).values * 100
+    out["pick_first_half"] = te.apply(
+        lambda r: r[f"h2_{max(POL, key=lambda p: r[f'h1_{p}'])}"], axis=1).values * 100 - arc.values * 100
+    out["oracle"] = (te[[f"h2_{p}" for p in POL]].max(axis=1) - arc).values * 100
+    return out
+
+
+def analyse_2fold(df):
+    r = pd.concat([fold_rows(df, 0), fold_rows(df, 1)], ignore_index=True)
+    L = [f"2-FOLD: every trace is a test trace once ({len(r)} traces). Best fixed policy per fold "
+         f"(chosen on that fold's TRAIN): {dict(r.groupby('fold').best_fixed.first())}",
+         "second-half hit rate vs ARC (points), mean [95% CI over traces], positive count"]
+    for c in ("always_best_fixed", "pick_first_half", "oracle"):
+        m, lo, hi = boot(r[c])
+        L.append(f"  {c:<18} {m:+.2f} [{lo:+.2f},{hi:+.2f}]   {int((r[c] > 0).sum())}/{len(r)}")
+    m, lo, hi = boot(r.pick_first_half - r.always_best_fixed)
+    L.append(f"  pick_first_half minus always_best_fixed: {m:+.2f} [{lo:+.2f},{hi:+.2f}]")
+    L.append("  per dataset, pick_first_half vs ARC: " + ", ".join(
+        f"{ds} {g.pick_first_half.mean():+.2f} (n={len(g)})" for ds, g in r.groupby("dataset")))
+    return "\n".join(L), r
 
 
 def analyse(df, max_onehit=0.90):

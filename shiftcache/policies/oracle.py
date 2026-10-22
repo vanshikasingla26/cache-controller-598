@@ -2,8 +2,10 @@
 
 Identical to ARC except that when REPLACE evicts from T1/T2, it looks at the k
 items nearest the LRU end and evicts the one whose next use is furthest away.
-No learned re-ranker restricted to the same k candidates can beat this, so the
-gap (Oracle-k vs ARC) is the ceiling on what the project can win.
+This is a GREEDY per-decision oracle, not an upper bound: an eviction choice also
+changes ARC's later state (ghost lists, p), so a learned re-ranker over the same
+candidates can do better in total (it does on the synthetic held-out servers).
+Treat the gap (Oracle-k vs ARC) as a reference point, not as a ceiling.
 
 `active` lets you restrict the oracle to certain time ranges (e.g. only inside
 ground-truth transition windows) to bound a controller that only runs then.
