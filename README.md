@@ -74,6 +74,20 @@ The F1-tuned detector lost to ARC, so the gate was re-tuned for hit rate on TRAI
 So on these MSR traces, an "act like LRU around detected shifts" controller does not beat plain ARC even
 with a gate tuned for hit rate; the best any such gate could do is below one point.
 
+## Controlled one-dimension shifts on real volumes (`scripts/real_controlled_shifts.py`, fig4)
+First 1M requests of each of the 8 usable MSR volumes; at request 500k ONE change with a controlled
+magnitude: popularity (remap 25/50/100% of the post-shift hot set = blocks covering 50% of post-shift
+accesses), scan (10/30/50% of requests become a sequential scan of new blocks), tenant (25/50% of
+requests interleaved from another real volume). Gate = the hit-rate-tuned one (no tuning here).
+Means over the 4 held-out test volumes:
+* ARC's p takes 70k-230k accesses to half-swing, yet the MIN - ARC gap right after the shift is not
+  larger than in steady state: transition-specific avoidable misses <= 0 in 6 of 8 scenarios (+98 and +44
+  misses per 50k accesses in the other two). ARC's slow adaptation does not cause extra misses here.
+* LRU-like action with the TRUE change point: -0.5 to -2.0 points after scans and partial hot-set swaps,
+  +0.5 / +0.8 for tenant mixes, +0.1 for a full hot-set swap.
+* The hit-rate-tuned detector found 1 of 32 test shifts (it is very conservative).
+* MIN is 5-10 points above ARC in the 50k accesses after each shift: room exists, but it is not shift-specific.
+
 ## Earlier findings (synthetic and the small CloudPhysics sample)
 1. **Synthetic, 8 held-out servers.** Adaptive detector (tuned on the 8 train servers only) matches
    the fixed one: precision 1.00, recall 0.97, mean delay 1,667 vs 1,757 accesses, and it is on for

@@ -105,3 +105,37 @@ if __name__ == "__main__":
     fig_splices(a.out)
     fig_gate(a.out)
     print("figures written to", a.out)
+
+
+def fig_controlled(out):
+    d = pd.read_csv(f"{R}/controlled_shifts_raw.csv")
+    t = d[d.group == "test"].copy()
+    t["scenario"] = t.dim + " " + t.mag.astype(str)
+    t["avoid_pts"] = t.avoidable_misses / 50_000 * 100
+    order = list(dict.fromkeys(t.scenario))
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.4))
+    for ax, col, title in [(axes[0], "dT_LRU-gated[gt]", "LRU-like action with the TRUE change point\n(first 50k accesses after the shift, vs ARC)"),
+                           (axes[1], "avoid_pts", "extra MIN - ARC gap right after the shift\n(transition-specific room; <=0 means none)")]:
+        ms, los, his = [], [], []
+        for sc in order:
+            m, lo, hi, _ = cluster_ci(t[t.scenario == sc], col, "vol")
+            ms.append(m)
+            los.append(m - lo)
+            his.append(hi - m)
+        ax.bar(range(len(order)), ms, yerr=[los, his], capsize=3,
+               color=["tab:green" if v > 0 else "tab:red" for v in ms])
+        ax.axhline(0, color="k", lw=0.8)
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels(order, rotation=30, ha="right", fontsize=7)
+        ax.set_ylabel("points")
+        ax.set_title(title, fontsize=8)
+    fig.suptitle("Controlled one-dimension shifts injected into 4 held-out real MSR volumes (95% CI over volumes)",
+                 fontsize=9)
+    fig.tight_layout()
+    fig.savefig(f"{out}/fig4_controlled_shifts.png", dpi=160)
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    os.makedirs("results/figures", exist_ok=True)
+    fig_controlled("results/figures")
