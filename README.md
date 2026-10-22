@@ -23,6 +23,28 @@ Everything added afterwards is in `git log`. Additions so far:
   W-TinyLFU, LHD (libCacheSim) plus MIN on any trace.
 * `tests/test_detector_adaptive.py`.
 
+## Learned cheap policy selector (step 4, `scripts/learned_selector.py`)
+Protocol fixed before results: same 33 traces, same train/test split and second-half hit rates as the
+policy-selection section. Features = one pass over the last 500k requests (unique ratio, one-hit share,
+top-1%/10% access share, sequential share, first-access share, inter-reference-gap histogram); no cache
+simulation. One regressor per policy predicts its gain over ARC on the next window; trained on 105 rows
+from 21 TRAIN traces; model chosen by leave-one-trace-out CV (shallow gradient boosting).
+
+| 12 held-out traces, second half vs ARC (points) | mean [95% CI] | positive |
+|---|---|---|
+| learned selector (features of 500k requests) | +0.46 [+0.11, +0.82] | 7/12 |
+| always S3-FIFO | +0.23 [-0.25, +0.66] | 9/12 |
+| pick from first half (simulates 9 policies on 1.5M requests) | +0.70 [+0.34, +1.04] | 10/12 |
+| oracle per trace | +0.78 [+0.49, +1.07] | 11/12 |
+
+Learned minus always-S3-FIFO: +0.23 [-0.36, +0.94] (not significant). Cost per decision: 0.56 s of
+Python feature extraction vs 10.4 s for 9 native libCacheSim simulations (about 18x; not a like-for-like
+comparison, different languages and window lengths).
+**Reading, honestly:** the learned selector beats ARC on held-out traces with a CI above zero at a fraction
+of the decision cost, and recovers about 60% of the simulation selector's gain. It is NOT reliably better
+than always using S3-FIFO, and in leave-one-trace-out CV on TRAIN both learned models were below ARC
+(ridge -0.16, GBR -0.08) while always-S3-FIFO was +0.05. Evidence is mixed and data-limited (105 rows).
+
 ## Policy selection across four real datasets (`scripts/policy_selection_headroom.py`, fig5)
 Data: 37 real block traces, first 3M requests each: MSR-Cambridge 13, CloudPhysics 12, Alibaba 8,
 Meta 4 (`results/real/baselines_*.csv`). Our ARC equals libCacheSim's ARC on all 37 (max difference
