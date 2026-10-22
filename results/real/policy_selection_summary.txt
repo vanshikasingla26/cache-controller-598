@@ -1,0 +1,22 @@
+traces used: 33 (train 21, test 12); excluded as >90% one-hit scans: see raw CSV
+best fixed policy chosen on TRAIN: S3FIFO
+
+TEST traces: points of hit rate on the second half, mean [95% CI over traces]
+  best fixed vs ARC                    +0.23 [-0.25,+0.66]   positive on 9/12
+  pick-from-first-half vs ARC          +0.70 [+0.34,+1.04]   positive on 10/12
+  pick-from-first-half vs best fixed   +0.47 [-0.02,+1.09]   positive on 6/12
+  oracle per trace vs ARC              +0.78 [+0.49,+1.07]   positive on 11/12
+  oracle per trace vs best fixed       +0.55 [+0.09,+1.14]   positive on 7/12
+
+TRAIN traces: points of hit rate on the second half, mean [95% CI over traces]
+  best fixed vs ARC                    +0.32 [-0.31,+0.99]   positive on 10/21
+  pick-from-first-half vs ARC          +0.59 [+0.10,+1.15]   positive on 11/21
+  pick-from-first-half vs best fixed   +0.26 [-0.21,+0.78]   positive on 9/21
+  oracle per trace vs ARC              +1.02 [+0.57,+1.55]   positive on 15/21
+  oracle per trace vs best fixed       +0.70 [+0.29,+1.17]   positive on 13/21
+
+per dataset (TEST + TRAIN), oracle per trace vs ARC and vs best fixed:
+  ali   n= 8  vs ARC +1.27   vs best fixed +0.18   pick-from-first-half vs best fixed -0.06
+  cp    n=12  vs ARC +0.56   vs best fixed +0.49   pick-from-first-half vs best fixed +0.08
+  meta  n= 4  vs ARC +1.34   vs best fixed +2.62   pick-from-first-half vs best fixed +2.59
+  msr   n= 9  vs ARC +0.96   vs best fixed +0.39   pick-from-first-half vs best fixed +0.03

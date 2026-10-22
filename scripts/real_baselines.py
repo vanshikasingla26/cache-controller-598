@@ -33,18 +33,46 @@ def native_hit(lcs, path, name, cap, n):
     return 1 - miss
 
 
+SUFFIXES = (".oracleGeneral.bin.zst", ".oracleGeneral.zst", "_oracleGeneral.zst", ".oracleGeneral.bin", ".bin")
+
+
+def trace_name(path, tag):
+    base = os.path.basename(path)
+    for suf in SUFFIXES:
+        if base.endswith(suf):
+            base = base[: -len(suf)]
+            break
+    if base.startswith("msr_"):
+        base = base[4:]
+    return base if tag == "msr" else f"{tag}:{base}"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", required=True)
     ap.add_argument("--n", type=int, default=3_000_000)
     ap.add_argument("--fractions", nargs="+", type=float, default=[0.01, 0.05, 0.10])
     ap.add_argument("--out", default="results/real")
+    ap.add_argument("--pattern", default="msr_*_oracleGeneral.zst", help="glob inside --dir")
+    ap.add_argument("--tag", default="msr", help="dataset tag used in trace names and output files")
+    ap.add_argument("--resume", action="store_true", help="skip traces already in the output CSVs")
     a = ap.parse_args()
     import libcachesim as lcs
     os.makedirs(a.out, exist_ok=True)
     rows, parity = [], []
-    for path in sorted(glob.glob(os.path.join(a.dir, "msr_*_oracleGeneral.zst"))):
-        name = os.path.basename(path)[4:].replace("_oracleGeneral.zst", "")
+    base_csv = "baselines_msr.csv" if a.tag == "msr" else f"baselines_{a.tag}.csv"
+    parity_csv = "arc_parity.csv" if a.tag == "msr" else f"arc_parity_{a.tag}.csv"
+    done = set()
+    if a.resume and os.path.exists(os.path.join(a.out, base_csv)):
+        prev = pd.read_csv(os.path.join(a.out, base_csv))
+        rows, done = prev.to_dict("records"), set(prev.trace)
+        if os.path.exists(os.path.join(a.out, parity_csv)):
+            parity = pd.read_csv(os.path.join(a.out, parity_csv)).to_dict("records")
+        print(f"resuming: {len(done)} traces already done", flush=True)
+    for path in sorted(glob.glob(os.path.join(a.dir, a.pattern))):
+        name = trace_name(path, a.tag)
+        if name in done:
+            continue
         tr = load_oracle_general(path, name=name, max_requests=a.n)
         n, uniq = len(tr), tr.footprint
         one_hit = float(np.mean(np.unique(tr.keys, return_counts=True)[1] == 1))
@@ -66,8 +94,9 @@ def main():
         parity.append({"trace": name, "our_ARC": ours, "libcachesim_ARC": theirs, "abs_diff": abs(ours - theirs)})
         print(f"{name}: {n:,} req, {uniq:,} unique, one-hit {one_hit:.0%}  ({time.time() - t0:.0f}s)  "
               f"ARC parity diff {abs(ours - theirs):.2e}", flush=True)
-        pd.DataFrame(rows).to_csv(os.path.join(a.out, "baselines_msr.csv"), index=False)
-    pd.DataFrame(parity).to_csv(os.path.join(a.out, "arc_parity.csv"), index=False)
+        pd.DataFrame(rows).to_csv(os.path.join(a.out, base_csv), index=False)
+        pd.DataFrame(parity).to_csv(os.path.join(a.out, parity_csv), index=False)
+    pd.DataFrame(parity).to_csv(os.path.join(a.out, parity_csv), index=False)
     df = pd.DataFrame(rows)
     pd.set_option("display.width", 250)
     for f in a.fractions:

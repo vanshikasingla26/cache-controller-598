@@ -23,6 +23,32 @@ Everything added afterwards is in `git log`. Additions so far:
   W-TinyLFU, LHD (libCacheSim) plus MIN on any trace.
 * `tests/test_detector_adaptive.py`.
 
+## Policy selection across four real datasets (`scripts/policy_selection_headroom.py`, fig5)
+Data: 37 real block traces, first 3M requests each: MSR-Cambridge 13, CloudPhysics 12, Alibaba 8,
+Meta 4 (`results/real/baselines_*.csv`). Our ARC equals libCacheSim's ARC on all 37 (max difference
+6e-17). Excluded by the fixed >90% one-hit rule: msr:proj_1, msr:proj_2, msr:src1_1, msr:usr_1. 33 traces remain.
+Split fixed in advance: within each dataset traces are sorted by name and assigned to train/test
+alternately (related neighbours cp w100-w106 and Alibaba 165/166 grouped): 21 train, 12 test.
+Each trace is cut in two halves; all numbers are hit rate on the SECOND half, cache = 5% of unique
+objects, libCacheSim native, 9 online policies.
+
+| on 12 held-out test traces (points vs ARC) | mean [95% CI over traces] | positive |
+|---|---|---|
+| always S3-FIFO (best single policy on TRAIN) | +0.23 [-0.25, +0.66] | 9/12 |
+| pick the policy that was best on the first half (causal, no ML) | **+0.70 [+0.34, +1.04]** | 10/12 |
+| oracle: best policy per trace (ceiling) | +0.78 [+0.49, +1.07] | 11/12 |
+
+Pick-from-first-half vs always-S3-FIFO: +0.47 [-0.02, +1.09]. Per dataset (all traces), pick vs
+always-S3-FIFO: Meta +2.59, CloudPhysics +0.08, MSR +0.03, Alibaba -0.06.
+
+**Reading:** choosing the policy per trace from its own recent history beats ARC on held-out traces from
+four companies, and the simple causal rule already reaches about 90% of the per-trace ceiling. So a
+learned per-trace selector could add at most about 0.08 points on these traces. Selecting caches with
+simulations of candidate configurations is known (e.g. miniature simulations, Waldspurger et al., USENIX
+ATC 2017), so the mechanism is not new. Caveats: 12 test traces; the selector here simulates all 9
+policies on 1.5M requests (its cost is not measured; sampled simulation is the known way to make it cheap);
+one decision per trace, no re-selection over time.
+
 ## Real MSR-Cambridge results (final for this run; see results/real/)
 Data: 13 MSR-Cambridge volumes (libCacheSim `oracleGeneral` .zst). Unit-size objects, cache = 5% of
 unique objects. Exclusion rule fixed before any result: volumes whose slice is more than 90% one-hit
