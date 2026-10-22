@@ -17,6 +17,7 @@ Design (fixed BEFORE looking at any result):
   python -u scripts/real_experiment.py --dir /path/to/msr_zst --out results/real
 """
 import argparse
+import gc
 import glob
 import itertools
 import os
@@ -165,6 +166,8 @@ def main():
     ap.add_argument("--tol", type=int, default=20_000)
     ap.add_argument("--collect-every", type=int, default=4)
     ap.add_argument("--skip-always", action="store_true")
+    ap.add_argument("--skip-splices", action="store_true",
+                    help="skip stage [3] (spliced TEST evaluation); reuse real_splice_raw.csv")
     ap.add_argument("--max-onehit", type=float, default=0.90,
                     help="drop volumes whose slice has a larger one-hit-object share (pure scans)")
     ap.add_argument("--train-vols", nargs="*", default=TRAIN_VOLS)
@@ -258,7 +261,7 @@ def main():
     # 4. spliced TEST evaluation
     print("\n[3] TEST splices", flush=True)
     rows = []
-    for tr in test:
+    for tr in ([] if a.skip_splices else test):
         n, cap = len(tr), max(1, int(tr.footprint * a.fraction))
         gt = transition_mask(n, tr.transitions, a.win)
         det, _, _ = gate_for(tr)
@@ -279,8 +282,8 @@ def main():
         pd.DataFrame(rows).to_csv(os.path.join(a.out, "real_splice_raw.partial.csv"), index=False)
         print(f"  {tr.name}: done ({(time.time() - T0) / 60:.1f} min elapsed, "
               f"detector gates {det.mean():.0%} of accesses)", flush=True)
-    sdf = pd.DataFrame(rows)
-    sdf.to_csv(os.path.join(a.out, "real_splice_raw.csv"), index=False)
+    if not a.skip_splices:
+        pd.DataFrame(rows).to_csv(os.path.join(a.out, "real_splice_raw.csv"), index=False)
 
     # 5. natural (unspliced) TEST volumes
     print("\n[4] natural TEST volumes", flush=True)
@@ -295,39 +298,21 @@ def main():
         if not a.skip_always:
             variants.append(("gbt[always]", lambda: ControlledARC(cap, k=a.k, gate="always", model=models["gbt"])))
         for name, make in variants:
-            r = simulate(tr, make())
+            pol = make()
+            r = simulate(tr, pol)
             nrows.append({"vol": v, "policy": name, "overall_hr": r.hit_rate, "gate_frac": float(det.mean()),
                           "n_starts": len(st)})
+            del pol, r
+            gc.collect()
+        pd.DataFrame(nrows).to_csv(os.path.join(a.out, "real_natural_raw.partial.csv"), index=False)
         print(f"  {v}: gate on {det.mean():.0%} of accesses, {len(st)} starts", flush=True)
-    ndf = pd.DataFrame(nrows)
-    ndf.to_csv(os.path.join(a.out, "real_natural_raw.csv"), index=False)
+        del tr, det
+        gc.collect()
+    pd.DataFrame(nrows).to_csv(os.path.join(a.out, "real_natural_raw.csv"), index=False)
 
-    # 6. summaries
-    L = []
-    arc = sdf[sdf.policy == "ARC"].set_index("pair")
-    for c in ("transition_hr", "steady_hr", "overall_hr"):
-        sdf["d_" + c] = sdf.apply(lambda r: (r[c] - arc.loc[r.pair, c]) * 100, axis=1)
-    L.append(f"REAL spliced TEST pairs ({sdf.pair.nunique()} pairs, {sdf.dst.nunique()} destination "
-             "volumes), points vs ARC, 95% CI resampling destination volumes")
-    for p in [x for x in sdf.policy.unique() if x != "ARC"]:
-        sub = sdf[sdf.policy == p]
-        parts = []
-        for c in ("transition_hr", "steady_hr", "overall_hr"):
-            m, lo, hi, _ = cluster_ci(sub, "d_" + c, "dst")
-            parts.append(f"{c[:-3]} {m:+.2f} [{lo:+.2f},{hi:+.2f}]")
-        L.append(f"  {p:<16} " + "   ".join(parts))
-    narc = ndf[ndf.policy == "ARC"].set_index("vol")
-    ndf["d_overall"] = ndf.apply(lambda r: (r.overall_hr - narc.loc[r.vol, "overall_hr"]) * 100, axis=1)
-    L.append(f"\nREAL natural TEST volumes ({ndf.vol.nunique()} volumes, no injected shift), "
-             "overall hit rate, points vs ARC, 95% CI over volumes")
-    for p in [x for x in ndf.policy.unique() if x != "ARC"]:
-        sub = ndf[ndf.policy == p]
-        m, lo, hi, k_ = cluster_ci(sub, "d_overall", "vol")
-        L.append(f"  {p:<16} overall {m:+.3f} [{lo:+.3f},{hi:+.3f}]   (gate on {sub.gate_frac.mean():.0%} of accesses)")
-    txt = "\n".join(L)
-    print("\n" + txt)
-    with open(os.path.join(a.out, "real_experiment_summary.txt"), "w") as f:
-        f.write(txt + "\n")
+    # 6. summaries (standalone: python scripts/summarize_real.py --out results/real)
+    from scripts.summarize_real import summarize
+    print("\n" + summarize(a.out))
     print(f"\ntotal {(time.time() - T0) / 60:.1f} min")
 
 

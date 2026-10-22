@@ -1,0 +1,12 @@
+REAL spliced TEST pairs (12 pairs, 4 destination volumes). Points of hit rate vs ARC; [95% CI resampling destination volumes]
+  gate on (detector) for 29% of accesses on average
+  LRU              transition +2.56 [+1.42,+4.18]   steady -2.55 [-3.97,-1.65]   overall -2.29 [-3.57,-1.49]
+  LRU-gated[det]   transition +1.89 [+0.96,+3.38]   steady -1.87 [-2.90,-1.32]   overall -1.68 [-2.58,-1.19]
+  LRU-gated[gt]    transition +2.56 [+1.42,+4.18]   steady -0.01 [-0.05,+0.02]   overall +0.12 [+0.09,+0.16]
+  lr[det]          transition +1.60 [+0.03,+3.43]   steady -3.70 [-4.89,-2.79]   overall -3.43 [-4.49,-2.63]
+  lr[gt]           transition +1.90 [+0.83,+3.34]   steady -0.08 [-0.22,+0.00]   overall +0.02 [-0.04,+0.06]
+  lr[random]       transition +0.98 [-2.33,+4.31]   steady -1.35 [-2.38,-0.77]   overall -1.24 [-2.04,-0.68]
+  gbt[det]         transition +1.21 [+0.59,+2.09]   steady -0.95 [-1.44,-0.66]   overall -0.84 [-1.27,-0.60]
+  gbt[gt]          transition +2.64 [+1.15,+5.03]   steady +0.03 [-0.01,+0.09]   overall +0.16 [+0.05,+0.33]
+  gbt[random]      transition +1.96 [+0.67,+4.18]   steady -0.32 [-0.62,-0.03]   overall -0.21 [-0.44,+0.02]
+  pairs where the detector-gated model beats ARC overall: 4/12
