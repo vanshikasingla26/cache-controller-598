@@ -1,0 +1,33 @@
+trace,kind,gate,proxy,real,gate_frac
+proj_0>proj_4,splice,F1-tuned fixed (previous gate),-2.342,-3.333799999999998,0.321
+proj_0>proj_4,splice,hit-rate-tuned,-1.2566000000000002,-1.4595999999999998,0.16
+proj_0>prxy_0,splice,F1-tuned fixed (previous gate),-0.13240000000000002,0.14330000000000176,0.205
+proj_0>prxy_0,splice,hit-rate-tuned,-0.0113,0.08949999999999791,0.1
+proj_0>usr_2,splice,F1-tuned fixed (previous gate),-0.45399999999999996,-0.3117999999999954,0.259
+proj_0>usr_2,splice,hit-rate-tuned,-0.2474,-0.05879999999999219,0.119
+proj_4>proj_0,splice,F1-tuned fixed (previous gate),-2.4448000000000003,-3.651500000000002,0.321
+proj_4>proj_0,splice,hit-rate-tuned,-1.4284,-1.8123,0.194
+proj_4>prxy_0,splice,F1-tuned fixed (previous gate),-2.1614999999999998,-3.519899999999998,0.369
+proj_4>prxy_0,splice,hit-rate-tuned,-1.3331000000000002,-1.8090999999999968,0.21
+proj_4>usr_2,splice,F1-tuned fixed (previous gate),-2.0342,-2.855800000000003,0.37
+proj_4>usr_2,splice,hit-rate-tuned,-1.126,-1.5075000000000005,0.229
+prxy_0>proj_0,splice,F1-tuned fixed (previous gate),-0.1379,-0.012999999999996348,0.205
+prxy_0>proj_0,splice,hit-rate-tuned,-0.0777,-0.05769999999999387,0.084
+prxy_0>proj_4,splice,F1-tuned fixed (previous gate),-2.0712,-3.453099999999998,0.316
+prxy_0>proj_4,splice,hit-rate-tuned,-1.0688,-1.9055999999999962,0.213
+prxy_0>usr_2,splice,F1-tuned fixed (previous gate),-0.38899999999999996,-0.37890000000000423,0.254
+prxy_0>usr_2,splice,hit-rate-tuned,-0.2549,-0.09430000000000271,0.119
+usr_2>proj_0,splice,F1-tuned fixed (previous gate),-0.3494,-0.21919999999999717,0.264
+usr_2>proj_0,splice,hit-rate-tuned,-0.3248,0.11220000000000674,0.135
+usr_2>proj_4,splice,F1-tuned fixed (previous gate),-1.7526,-2.3556999999999997,0.377
+usr_2>proj_4,splice,hit-rate-tuned,-0.9461,-1.1467999999999978,0.21
+usr_2>prxy_0,splice,F1-tuned fixed (previous gate),-0.21389999999999998,-0.20009999999999195,0.264
+usr_2>prxy_0,splice,hit-rate-tuned,-0.2166,-0.03189999999999582,0.15
+proj_0,natural,F1-tuned fixed (previous gate),-0.7196666666666667,-0.6563333333333254,0.25133333333333335
+proj_0,natural,hit-rate-tuned,-0.48633333333333334,-0.2579333333333267,0.13333333333333333
+proj_4,natural,F1-tuned fixed (previous gate),-2.665,-4.992400000000001,0.344
+proj_4,natural,hit-rate-tuned,-2.1540666666666666,-4.2200000000000015,0.2733333333333333
+prxy_0,natural,F1-tuned fixed (previous gate),-0.05806666666666666,-0.07986666666666142,0.1
+prxy_0,natural,hit-rate-tuned,-0.07200000000000001,-0.07173333333333476,0.03333333333333333
+usr_2,natural,F1-tuned fixed (previous gate),-0.7432666666666666,-1.2412666666666654,0.21133333333333335
+usr_2,natural,hit-rate-tuned,-0.9721333333333334,-1.4287999999999994,0.23533333333333334

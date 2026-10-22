@@ -60,6 +60,20 @@ Caveats: shifts are artificial (a full swap between two real volumes); only 4 de
 so CIs are wide; the gate (fixed detector) was chosen by a rule set beforehand (higher TRAIN F1) even
 though the self-calibrating one looks better on test; slices are the first 0.5M-3M requests of each volume.
 
+## Hit-rate-tuned gate and the ceiling (`scripts/real_gate_tuning.py`, `results/real/gate_tuning_*`)
+The F1-tuned detector lost to ARC, so the gate was re-tuned for hit rate on TRAIN only (14 traces,
+174 configs) with a label-free proxy: gain = sum over gated accesses of (LRU hit - ARC hit) / n.
+* **Ceiling of LRU-like switching.** Gating exactly the 1000-access windows where LRU beats ARC would
+  gain only +0.74 (train), +0.74 (test splices), +0.68 (test natural) points overall. Always-LRU loses
+  0.7 to 3.2 points.
+* **Best tuned gate on TRAIN:** proxy +0.10 points, positive on only 36% of train traces.
+* **Proxy validity:** correlation 0.98 with the real LRU-gated simulation on 32 TEST runs, mean absolute
+  error 0.51 points (the real number is lower: switching eviction behavior costs hit rate).
+* **Real LRU-gated ARC on TEST with the hit-rate-tuned gate:** splices -0.81 [-1.27,-0.56] (F1-tuned
+  gate: -1.68), natural -1.49 [-3.23,-0.16] (F1-tuned gate: -1.74). Better, still worse than ARC.
+So on these MSR traces, an "act like LRU around detected shifts" controller does not beat plain ARC even
+with a gate tuned for hit rate; the best any such gate could do is below one point.
+
 ## Earlier findings (synthetic and the small CloudPhysics sample)
 1. **Synthetic, 8 held-out servers.** Adaptive detector (tuned on the 8 train servers only) matches
    the fixed one: precision 1.00, recall 0.97, mean delay 1,667 vs 1,757 accesses, and it is on for
