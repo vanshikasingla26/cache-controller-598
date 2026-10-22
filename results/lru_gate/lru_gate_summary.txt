@@ -1,0 +1,4 @@
+policy, transition / steady / overall vs ARC in points, 95% bootstrap CI over 8 held-out servers
+LRU             transition +2.04 [+1.26,+2.79]  steady -3.31 [-3.96,-2.66]  overall -1.69 [-2.33,-1.00]
+LRU-gated[gt]   transition +2.04 [+1.26,+2.79]  steady +0.31 [+0.11,+0.52]  overall +0.83 [+0.45,+1.22]
+LRU-gated[det]  transition +1.52 [+0.65,+2.36]  steady +0.28 [+0.05,+0.49]  overall +0.65 [+0.22,+1.07]

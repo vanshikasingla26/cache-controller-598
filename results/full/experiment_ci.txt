@@ -1,0 +1,15 @@
+95% bootstrap CI over 8 held-out synthetic servers, percentage points vs ARC (computed from experiment_raw.csv)
+LRU            transition +2.04 [+1.26,+2.79]  steady -3.31 [-3.96,-2.66]  overall -1.69 [-2.33,-1.00]
+Oracle-X[gt]   transition +2.60 [+2.20,+3.05]  steady +0.35 [+0.18,+0.53]  overall +1.03 [+0.80,+1.31]
+Oracle-X[det]  transition +2.04 [+1.64,+2.44]  steady +0.34 [+0.17,+0.52]  overall +0.86 [+0.62,+1.11]
+lr[det]        transition +0.11 [+0.04,+0.23]  steady +0.02 [+0.00,+0.05]  overall +0.05 [+0.01,+0.10]
+gbt[always]    transition +0.23 [+0.06,+0.54]  steady +0.05 [-0.02,+0.13]  overall +0.10 [+0.00,+0.26]
+gbt[random]    transition +0.38 [+0.19,+0.59]  steady -0.08 [-0.16,-0.01]  overall +0.06 [-0.02,+0.13]
+gbt[gt]        transition +2.94 [+2.52,+3.39]  steady +0.35 [+0.23,+0.48]  overall +1.14 [+0.93,+1.37]
+gbt[det]       transition +2.50 [+2.05,+2.95]  steady +0.30 [+0.18,+0.42]  overall +0.97 [+0.75,+1.20]
+
+Control (scripts/lru_gate_control.py): same servers, same detector, no model
+LRU-gated[gt]  transition +2.04 [+1.26,+2.79]  steady +0.31 [+0.11,+0.52]  overall +0.83 [+0.45,+1.22]
+LRU-gated[det] transition +1.52 [+0.65,+2.36]  steady +0.28 [+0.05,+0.49]  overall +0.65 [+0.22,+1.07]
+gbt[det] minus LRU-gated[det] transition_hr: +0.98 [+0.57,+1.42]
+gbt[det] minus LRU-gated[det] overall_hr: +0.32 [+0.11,+0.54]
