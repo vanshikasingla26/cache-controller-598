@@ -23,7 +23,44 @@ Everything added afterwards is in `git log`. Additions so far:
   W-TinyLFU, LHD (libCacheSim) plus MIN on any trace.
 * `tests/test_detector_adaptive.py`.
 
-## Findings so far (read before citing)
+## Real MSR-Cambridge results (final for this run; see results/real/)
+Data: 13 MSR-Cambridge volumes (libCacheSim `oracleGeneral` .zst). Unit-size objects, cache = 5% of
+unique objects. Exclusion rule fixed before any result: volumes whose slice is more than 90% one-hit
+objects (pure scans) are dropped from train and test (`src1_0`, `web_2`, `proj_1`, `proj_2`, `usr_1`),
+leaving 4 train volumes (hm_0, prn_0, prn_1, src1_1) and 4 test volumes (proj_0, proj_4, prxy_0, usr_2),
+split by server family. Detectors and the re-ranker are trained on TRAIN splices only.
+
+1. **Baselines (3M requests per volume, `results/real/baselines_msr.csv`).** Our ARC equals libCacheSim's
+   ARC on all 13 volumes (difference <= 7e-17). No policy wins everywhere (5% cache: S3-FIFO best on
+   prn_1, W-TinyLFU on prn_0, ARC on proj_4). Six volumes are scan-dominated, hit rate < 7% for every policy.
+2. **Spliced pairs with a known shift (12 pairs, 4 destination volumes).** Points of hit rate vs ARC:
+
+   | gate | model | after shift | rest | overall |
+   |---|---|---|---|---|
+   | known shift | learned (GBT) | +2.64 | +0.03 | +0.16 [+0.05,+0.33] |
+   | known shift | none (LRU-like) | +2.56 | -0.01 | +0.12 [+0.09,+0.16] |
+   | detector | learned (GBT) | +1.21 | -0.95 | -0.84 [-1.27,-0.60] |
+   | detector | none (LRU-like) | +1.89 | -1.87 | -1.68 [-2.58,-1.19] |
+   | random, same lengths | learned (GBT) | +1.96 | -0.32 | -0.21 [-0.44,+0.02] |
+
+   The detector-gated model beats ARC overall on only 4 of 12 pairs.
+3. **Natural (unspliced) test volumes (4).** Overall vs ARC: LRU-like gate -1.74 [-3.91,-0.37],
+   learned GBT gate -1.88 [-3.91,-0.43]; worse than ARC on all four volumes (proj_4: 0.143 -> 0.094).
+4. **Detector on test splices.** Synthetic-tuned fixed: found 2 of 12 shifts, on for 79% of accesses.
+   Real-tuned fixed: 1 of 12. Self-calibrating: 5 of 12, precision 0.11, on for 40%. Train F1 only 0.23-0.31.
+
+**Reading:** the benefit exists when the controller knows the shift (about +2.6 points in the 50k
+accesses after it, no loss elsewhere), and most of it comes from acting recency-like, not from the model
+(+0.08 more). With a detector built from the reuse-gap statistic, the controller loses to ARC on real
+traces. The detector is the bottleneck. On splices the model degrades more gently than the model-free
+rule when the gate is wrong (-0.84 vs -1.68), but not on natural volumes (-1.88 vs -1.74, overlapping CIs).
+The detector-chosen windows were worse places to act than random ones (steady -0.95 vs -0.32).
+
+Caveats: shifts are artificial (a full swap between two real volumes); only 4 destination/test volumes,
+so CIs are wide; the gate (fixed detector) was chosen by a rule set beforehand (higher TRAIN F1) even
+though the self-calibrating one looks better on test; slices are the first 0.5M-3M requests of each volume.
+
+## Earlier findings (synthetic and the small CloudPhysics sample)
 1. **Synthetic, 8 held-out servers.** Adaptive detector (tuned on the 8 train servers only) matches
    the fixed one: precision 1.00, recall 0.97, mean delay 1,667 vs 1,757 accesses, and it is on for
    16.9% of accesses instead of 29.9%.
