@@ -1,0 +1,15 @@
+what,detector,starts,flagged,detected,delay
+raw CloudPhysics sample,fixed,2,0.9034003091190108,,
+raw CloudPhysics sample,adaptive,0,0.0,,
+shift@0,fixed,2,0.85,NO,
+shift@0,adaptive,0,0.0,NO,
+control@0,fixed,2,0.89,n/a,
+control@0,adaptive,0,0.0,n/a,
+shift@6000,fixed,2,0.91,NO,
+shift@6000,adaptive,0,0.0,NO,
+control@6000,fixed,2,0.95,n/a,
+control@6000,adaptive,0,0.0,n/a,
+shift@12000,fixed,2,0.84,yes,16000.0
+shift@12000,adaptive,0,0.0,NO,
+control@12000,fixed,2,0.86,n/a,
+control@12000,adaptive,0,0.0,n/a,

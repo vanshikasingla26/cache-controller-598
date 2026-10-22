@@ -13,13 +13,39 @@ Everything added afterwards is in `git log`. Additions so far:
 * `results/lru_gate/`, `results/full/experiment_ci.txt`: control results and the 95% bootstrap CIs
   computed from `results/full/experiment_raw.csv` (the original script only printed them).
 
+* `shiftcache/detector_adaptive.py`: self-calibrating detector (thresholds are median - z * robust
+  scale of the trace's own recent overlap values, not fixed numbers). Drop-in for `ShiftDetector`.
+  Decision logic is a pure function of the overlap series, tested online == offline.
+* `shiftcache/realdata.py`, `scripts/fetch_sample_trace.py`: loader for libCacheSim `oracleGeneral`
+  traces and a download of the small real CloudPhysics sample (113,872 requests).
+* `scripts/detector_eval.py`, `results/detector_eval/`: fixed vs adaptive detector.
+* `scripts/lcs_baselines.py`, `results/baselines/`: LRU, LFU, ARC, LeCaR, CACHEUS, S3-FIFO, SIEVE,
+  W-TinyLFU, LHD (libCacheSim) plus MIN on any trace.
+* `tests/test_detector_adaptive.py`.
+
+## Findings so far (read before citing)
+1. **Synthetic, 8 held-out servers.** Adaptive detector (tuned on the 8 train servers only) matches
+   the fixed one: precision 1.00, recall 0.97, mean delay 1,667 vs 1,757 accesses, and it is on for
+   16.9% of accesses instead of 29.9%.
+2. **The CloudPhysics sample cannot validate a shift detector.** It has 48,974 unique objects in
+   113,872 requests, so most of it is cold start (share of first-ever accesses falls from 66% to 21%
+   with no shift). Its overlap statistic has robust scale 0.17 (synthetic: about 0.01), the lowest
+   overlap anywhere is only 2.9 scale units below the median, and a namespace splice changes the
+   overlap series by about 1 scale unit. The adaptive detector tuned on synthetic data picked
+   z_start = 8, whose threshold is negative on this trace, so it never fires there. That is not
+   evidence that it transfers. Real validation needs long MSR traces and splices of different servers.
+3. **Real-data baselines (CloudPhysics sample, object-count caches).** Our ARC equals libCacheSim's
+   ARC exactly (0.1725 / 0.1886 / 0.2272 at 1% / 5% / 10% of unique objects). ARC is the best online
+   policy at 1% and 5%; S3-FIFO is best at 10% (0.2447). CACHEUS 0.1797 < ARC 0.1886 at 5%.
+   Clairvoyant MIN reaches 0.2073 / 0.2968 / 0.3710. See `results/baselines/`.
+
 ## Known issues in the imported snapshot
 * The `OracleTailARC` docstring and the headroom text call the oracle a ceiling no learned
   re-ranker can beat. `gbt[det]` beats `Oracle-X[det]` on all 8 held-out servers, so it is a greedy
   per-decision oracle, not a ceiling.
-* All results are on synthetic servers from one generator family. On the real CloudPhysics sample
-  from libCacheSim (113,872 requests) the detector tuned on synthetic data flags ~90% of accesses.
-  It needs per-trace calibration before any real-trace claim.
+* The detector-gated GBT gain (+2.50 points in transition windows, `results/full/experiment_ci.txt`)
+  is on synthetic servers from one generator family. A model-free control (ARC acting like LRU
+  while the gate is on) reaches +1.52, so the learned model's increment is about +0.98 points.
 
 ---
 
