@@ -1,0 +1,7 @@
+[1] real trace: 113,872 requests, 48,974 unique objects, cache = 2,448 objects (5%)
+[2] ARC check: this repo 0.1886 vs libCacheSim 0.1886 (difference 5.6e-17)
+[3] hit rates: MIN 0.297, ARC 0.189, S3FIFO 0.187, LFU 0.183, Sieve 0.183, WTinyLFU 0.179, Cacheus 0.179, LHD 0.177, LeCaR 0.176, LRU 0.175
+[4] policy selection: best on first half = ARC; on the second half it scores +0.00 points vs ARC (oracle +0.00)
+[5] synthetic server (893,115 accesses, 5 shifts), LRU-like action vs ARC: true shift: +1.74 after shifts, +0.57 overall; detector: +1.01 after shifts, +0.32 overall
+
+done in 16 s. Full experiments: see README 'Reproducing'.

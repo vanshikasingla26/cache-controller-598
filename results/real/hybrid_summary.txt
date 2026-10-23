@@ -1,0 +1,16 @@
+fold 0: 120 training rows from 24 traces; LOTO-CV on TRAIN: ridge +0.31, gbr +0.39; chosen gbr; best fixed on TRAIN S3FIFO
+fold 1: 70 training rows from 14 traces; LOTO-CV on TRAIN: ridge +0.05, gbr +0.42; chosen gbr; best fixed on TRAIN ARC
+
+TWO FOLDS, 38 test traces, second-half hit rate vs ARC (points), mean [95% CI], positive
+  always_best_fixed  -0.00 [-0.17,+0.15]   9/38
+  features_only      +0.16 [-0.57,+0.72]   21/38
+  mini_sim_1pct      +0.65 [+0.26,+1.08]   24/38
+  mini_sim_5pct      +0.35 [-0.17,+0.81]   24/38
+  hybrid             +0.50 [+0.18,+0.84]   21/38
+  full_sim_pick      +0.70 [+0.32,+1.13]   24/38
+  oracle             +0.99 [+0.63,+1.40]   29/38
+  hybrid minus always_best_fixed: +0.50 [+0.12,+0.90]
+  hybrid minus mini_sim_5pct: +0.15 [-0.20,+0.60]
+  mini_sim_5pct minus always_best_fixed: +0.35 [-0.16,+0.83]
+
+cost per decision: mini-sim 1% 1.24 s, 5% 2.21 s (sampling + 9 simulations) vs full simulation 11.08 s

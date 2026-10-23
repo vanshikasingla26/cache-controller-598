@@ -1,0 +1,7 @@
+2-FOLD: every trace is a test trace once (38 traces). Best fixed policy per fold (chosen on that fold's TRAIN): {0: 'S3FIFO', 1: 'ARC'}
+second-half hit rate vs ARC (points), mean [95% CI over traces], positive count
+  always_best_fixed  -0.00 [-0.17,+0.15]   9/38
+  pick_first_half    +0.70 [+0.32,+1.13]   24/38
+  oracle             +0.99 [+0.63,+1.40]   29/38
+  pick_first_half minus always_best_fixed: +0.70 [+0.31,+1.15]
+  per dataset, pick_first_half vs ARC: ali +1.03 (n=8), cp +0.46 (n=17), meta +1.31 (n=4), msr +0.60 (n=9)

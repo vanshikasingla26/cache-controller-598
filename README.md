@@ -5,35 +5,51 @@ real room to improve? This repository contains the simulator, detectors, learned
 experiments and results. Unless noted, numbers are on real block-storage traces, in percentage points
 of hit rate versus ARC, with 95% bootstrap confidence intervals over traces or volumes.
 
-## Results at a glance
-1. **Policy selection, 37 real traces from 4 sources** (MSR-Cambridge, CloudPhysics, Alibaba, Meta; 33
-   after excluding pure scans). Two folds, so every trace is a test trace exactly once (fig5):
-   | selector (second half of each trace) | vs ARC | positive |
-   |---|---|---|
-   | pick the policy that was best on the first half (simulates 9 policies) | **+0.63 [+0.28, +1.00]** | 21/33 |
-   | always S3-FIFO (best single policy on TRAIN in both folds) | +0.29 [-0.15, +0.74] | 19/33 |
-   | learned cheap selector (500k-request features, no simulation) | +0.25 [-0.23, +0.68] | 18/33 |
-   | oracle: best policy per trace | +0.93 [+0.62, +1.29] | 26/33 |
+## Quick start (about 20 seconds, public data only)
+```bash
+pip install -r requirements.txt
+python scripts/quickstart.py      # downloads a 2.7 MB real CloudPhysics sample, runs a miniature of each result
+python -m pytest -q               # 38 tests
+```
 
-   The learned selector decides about 19x faster than simulating, but it is no better than always using
-   S3-FIFO (difference -0.04 [-0.70, +0.54]); its first-fold result (+0.45) did not replicate.
-2. **Shift-aware controller on real MSR traces** (12 spliced pairs, 4 held-out volumes; fig2, fig3). With
+## Results at a glance
+1. **Policy selection, 42 real traces from 4 sources** (MSR-Cambridge 13, CloudPhysics 17, Alibaba 8, Meta 4;
+   38 after excluding pure scans). Two folds, every trace is a test trace exactly once; hit rate on the
+   second half of each trace (fig5):
+
+   | selector | vs ARC | vs always S3-FIFO | positive vs ARC | cost per decision |
+   |---|---|---|---|---|
+   | always S3-FIFO | +0.35 [-0.09, +0.81] | - | 22/38 | none |
+   | learned, cheap features only | +0.16 [-0.57, +0.72] | -0.19 [-1.19, +0.51] | 21/38 | 0.6 s |
+   | miniature simulation, 1% sample (no ML) | +0.65 [+0.26, +1.08] | +0.30 [-0.02, +0.64] | 24/38 | 1.2 s |
+   | miniature simulation, 5% sample (no ML) | +0.35 [-0.17, +0.81] | +0.00 [-0.75, +0.57] | 24/38 | 2.2 s |
+   | **hybrid: 5% miniature simulation + learned model** | **+0.50 [+0.18, +0.84]** | +0.15 [-0.28, +0.56] | 21/38 | about 2.8 s |
+   | full simulation of 9 policies on the first half | **+0.70 [+0.32, +1.13]** | **+0.35 [+0.03, +0.69]** | 24/38 | 11.1 s |
+   | oracle: best policy per trace | +0.99 [+0.63, +1.40] | +0.64 [+0.35, +0.95] | 29/38 | - |
+
+   Choosing the policy per trace beats ARC; only full simulation also beats always-S3-FIFO with a CI above
+   zero. The learned hybrid beats ARC but not always-S3-FIFO or plain miniature simulation (hybrid minus
+   1% miniature simulation: -0.16 [-0.55, +0.17]).
+2. **Byte hit rate with real object sizes** (38 traces, two folds): always S3-FIFO +2.50 [+1.25, +3.93],
+   picking from the first half +2.84 [+1.38, +4.48], oracle +3.30 [+1.87, +4.91]. Selection adds +0.33
+   [-0.26, +0.90] over S3-FIFO, and nothing without the Meta traces (-0.09 [-0.62, +0.31]): with real sizes,
+   switching from ARC to S3-FIFO captures most of the gain.
+3. **Shift-aware controller on real MSR traces** (12 spliced pairs, 4 held-out volumes; fig2, fig3). With
    the true shift time: +2.6 points in the 50k accesses after the shift (+0.16 overall). With a real
    detector it loses to ARC: -0.84 overall (learned re-ranker), -1.68 (model-free), -0.81 with a gate tuned
-   for hit rate. Even perfect window-by-window LRU-like switching would gain only about +0.7 overall.
-3. **Controlled one-dimension shifts injected into real volumes** (fig4): ARC is not further behind the
-   clairvoyant optimum right after a shift than in steady state, and an LRU-like action hurts after scans.
-4. **Byte hit rate with real object sizes**: picking the policy from the first half beats ARC by +2.38
-   [+1.04, +3.97] on byte hit rate (25/33); without the Meta traces, which dominate, {lines[1][1]:+.2f} [{lines[1][2]:+.2f}, {lines[1][3]:+.2f}].
+   for hit rate; always-on re-ranking loses less (-0.30) and costs 95-260x ARC per access.
+4. **Controlled shifts injected into real volumes** (single and combined dimensions; fig4): ARC is not
+   further behind the clairvoyant optimum right after a shift than in steady state; an LRU-like action helps
+   with mixed-in tenant traffic and hurts with scans; no adaptive policy (CACHEUS, S3-FIFO) is uniformly
+   better than ARC right after a shift.
 5. **Baselines** (fig1, `results/real/baselines_*.csv`): our ARC is bit-identical to libCacheSim's ARC on
-   all 37 traces; no single policy wins everywhere.
+   all 42 traces; no single policy wins everywhere.
 6. **Synthetic servers** (one generator family, 8 held-out servers): the detector-gated learned re-ranker
    gains +2.50 points in transition windows; a model-free control gets +1.52 of that.
 
 ## Reproducing
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                       # 38 tests, about 30 seconds
 ```
 **Data.** Download the `oracleGeneral` files from https://github.com/cacheMon/cache_dataset (rows
 "Microsoft Cambridge", "CloudPhysics", "Alibaba Block", "MetaStorage", column "OracleGeneral format")
@@ -41,7 +57,7 @@ and place them as:
 ```
 data/msr/msr_<volume>_oracleGeneral.zst      hm_0 prn_0 prn_1 proj_0 proj_1 proj_2 proj_4 prxy_0
                                              src1_0 src1_1 usr_1 usr_2 web_2
-data/cp/w<id>.oracleGeneral.bin.zst          w32 w40 w41 w42 w43 w100-w106
+data/cp/w<id>.oracleGeneral.bin.zst          w18 w19 w32 w33 w36 w37 w40 w41 w42 w43 w100-w106
 data/ali/alibabaBlock_<id>.oracleGeneral.zst 0 11 14 15 100 150 165 166
 data/meta/block_traces_<i>.oracleGeneral.bin.zst  1-4
 ```
@@ -57,6 +73,10 @@ python -u scripts/real_gate_tuning.py --dir data/msr --out results/real         
 python -u scripts/real_controlled_shifts.py --dir data/msr --out results/real             # ~15 min
 python -u scripts/policy_selection_headroom.py --out results/real                         # ~15 min
 python -u scripts/learned_selector.py --out results/real                                  # ~15 min
+python -u scripts/hybrid_selector.py --out results/real                                   # ~10 min
+python -u scripts/real_always_overhead.py --dir data/msr --out results/real               # ~45 min
+python -u scripts/real_controlled_combos.py --dir data/msr --out results/real             # ~20 min
+python -u scripts/policy_selection_headroom.py --sizes --out results/real --tmp /tmp/hb   # ~20 min
 python scripts/make_figures.py --out results/figures
 python -u scripts/experiment.py && python -u scripts/lru_gate_control.py                  # synthetic
 ```
@@ -71,78 +91,70 @@ each trace is cut to its first N requests (3M unless stated). The controller exp
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
 
 ## Byte hit rate with real object sizes (`scripts/policy_selection_headroom.py --sizes`)
-Same 33 traces, splits and protocol as the policy-selection section, but every request keeps its real size,
-the cache holds 5% of the unique BYTES of the slice, and the metric is byte hit rate. W-TinyLFU is left out:
-libCacheSim sizes its count-min sketch by the capacity in bytes and fails to allocate it.
+Same 38 traces, folds and protocol, but every request keeps its real size, the cache holds 5% of the unique
+BYTES of the slice, and the metric is byte hit rate. W-TinyLFU is left out: libCacheSim sizes its count-min
+sketch by the capacity in bytes and fails to allocate it.
 
-| two folds, 33 test traces, second half vs ARC (byte hit rate, points) | all datasets | without Meta (29) |
+| two folds, second half vs ARC (byte hit rate, points) | all 38 traces | without Meta (34) |
 |---|---|---|
-| always the best fixed policy on TRAIN (CACHEUS fold 0, S3-FIFO fold 1) | +1.80 [+0.58, +3.24], 20/33 | +0.48 [-0.10, +1.15], 16/29 |
-| pick the policy that was best on the first half | **+2.38 [+1.04, +3.97], 25/33** | +0.82 [+0.39, +1.31], 21/29 |
-| oracle per trace | +2.91 [+1.59, +4.49], 29/33 | +1.43 [+0.88, +2.07], 25/29 |
+| always S3-FIFO (best fixed on TRAIN in both folds) | +2.50 [+1.25, +3.93], 29/38 | +1.65 [+0.65, +3.06], 25/34 |
+| pick the policy that was best on the first half | +2.84 [+1.38, +4.48], 29/38 | +1.56 [+0.67, +2.90], 25/34 |
+| oracle per trace | +3.30 [+1.87, +4.91], 33/38 | +2.08 [+1.13, +3.44], 29/34 |
 
-Pick minus always-best-fixed: +0.59 [-0.08, +1.16] (all), +0.35 [-0.34, +0.90] (without Meta).
-Per dataset (pick vs ARC): Meta +13.68, Alibaba +1.33, MSR +0.82, CloudPhysics +0.49; median over all 33
-traces +0.61. With real sizes the gaps are larger than with unit sizes (ARC does not consider size), and
-the Meta traces dominate the mean, so the without-Meta column is the conservative number.
+Pick minus always-S3-FIFO: +0.33 [-0.26, +0.90] (all), -0.09 [-0.62, +0.31] (without Meta). Per dataset (pick
+vs ARC): Meta +13.68, CloudPhysics +2.06, Alibaba +1.33, MSR +0.82; median over 38 traces +0.71.
+**Reading:** with real sizes ARC (which ignores size) is clearly beaten, but simply using S3-FIFO captures
+most of the gain; per-trace selection adds nothing significant.
 
 ## Learned cheap policy selector (`scripts/learned_selector.py`, `results/real/selector_*`)
-Protocol fixed before results; same 33 traces, splits and second-half hit rates as the policy-selection
+Protocol fixed before results; same traces, folds and second-half hit rates as the policy-selection
 section. Features = one pass over the last 500k requests (unique ratio, one-hit share, top-1%/10% access
 share, sequential share, first-access share, inter-reference-gap histogram); no cache simulation. One
 regressor per policy predicts its gain over ARC on the next window; the model (ridge or shallow gradient
 boosting) is chosen per fold by leave-one-trace-out CV on that fold's TRAIN traces.
 
-| second half vs ARC (points) | fold 0 (12 test traces) | both folds (33 test traces) |
+| second half vs ARC (points) | fold 0 (14 test traces) | both folds (38 test traces) |
 |---|---|---|
-| learned selector | +0.45 [+0.11, +0.81], 7/12 | +0.25 [-0.23, +0.68], 18/33 |
-| always S3-FIFO | +0.23 [-0.25, +0.66], 9/12 | +0.29 [-0.15, +0.74], 19/33 |
-| pick from first half (simulation) | +0.70 [+0.34, +1.04], 10/12 | +0.63 [+0.28, +1.00], 21/33 |
-| oracle per trace | +0.78 [+0.49, +1.07], 11/12 | +0.93 [+0.62, +1.29], 26/33 |
+| learned selector | +0.32 [+0.06, +0.62], 8/14 | +0.16 [-0.57, +0.72], 21/38 |
+| always S3-FIFO | -0.01 [-0.45, +0.41], 9/14 | +0.35 [-0.09, +0.81], 22/38 |
+| pick from first half (simulation) | +0.43 [+0.02, +0.83], 10/14 | +0.70 [+0.32, +1.13], 24/38 |
+| oracle per trace | +0.62 [+0.36, +0.91], 11/14 | +0.99 [+0.63, +1.40], 29/38 |
 
-Learned minus always-S3-FIFO over both folds: -0.04 [-0.70, +0.54]; the learned choice equals the
-simulation's choice on 11/33 traces. Leave-one-trace-out CV on TRAIN: fold 0 ridge -0.16, GBR -0.10
-(always-S3-FIFO +0.05); fold 1 ridge +0.44, GBR +0.38 (always-S3-FIFO +0.14). The fold-0 test number moves
-slightly between runs (+0.46 vs +0.45) because subsampled boosting depends on training-row order.
+Learned minus always-S3-FIFO over both folds: -0.19 [-1.19, +0.51]; same choice as the simulation on
+18/38. CV on TRAIN: fold 0 ridge +0.00, GBR +0.45 (always-S3-FIFO +0.28); fold 1 ridge +0.40, GBR +0.40
+(+0.13). The fold-0 result does not hold over both folds.
+**Hidden costs.** Training (8 regressors): 1.2 s / 1.0 s per fold. Inference: 0.47 ms per decision. Feature
+extraction: 0.58 s per 500k requests (Python) vs 11.1 s for simulating 9 policies on 1.5M requests natively
+(about 19x; different languages and window lengths). State: one last-seen index per object seen so far,
+median 0.74M entries at decision time (about 12 MB at 16 bytes per entry, at most 24 MB).
 
-**Hidden costs.** Training (8 regressors): 1.1 s (fold 0), 0.01 s (fold 1). Inference: 0.5 ms per decision.
-Feature extraction: 0.59 s per 500k requests in Python, vs 11.2 s for simulating 9 policies on 1.5M
-requests natively (about 19x; different languages and window lengths, so only indicative). State: one
-last-seen index per object seen so far, median 0.74M entries at decision time (about 12 MB at 16 bytes per
-entry, at most 24 MB; `results/real/selector_state.csv`).
-
-**Reading:** a cheap learned selector is feasible, but with 60-105 training rows it does not beat always
-using S3-FIFO. The simulation-based selector is the robust positive result.
+## Hybrid selector: miniature simulation + learned correction (`scripts/hybrid_selector.py`)
+Miniature simulation (Waldspurger et al., ATC 2017): simulate the 9 policies on a hash-sampled R% of the
+objects of the first half with the cache scaled by R, and pick the best. Hybrid: per policy, a regressor
+predicts the next-window gain over ARC from the 5% miniature-simulation gains on the current window plus the
+cheap features above; trained on TRAIN traces only (120 / 70 rows per fold), model chosen by leave-one-trace-
+out CV (GBR in both folds; CV gains +0.39 / +0.42). Numbers are in "Results at a glance" item 1
+(`results/real/hybrid_test_results.csv`). The 5% sample did worse than the 1% sample; both rates were fixed
+in advance and are reported as measured. The hybrid beats ARC (+0.50 [+0.18, +0.84]) but does not beat
+always-S3-FIFO or plain miniature simulation with a CI above zero.
 
 ## Policy selection across four real datasets (`scripts/policy_selection_headroom.py`, fig5)
-Data: 37 real block traces, first 3M requests each: MSR-Cambridge 13, CloudPhysics 12, Alibaba 8,
-Meta 4 (`results/real/baselines_*.csv`). Our ARC equals libCacheSim's ARC on all 37 (max difference
-6e-17). Excluded by the fixed >90% one-hit rule: msr:proj_1, msr:proj_2, msr:src1_1, msr:usr_1. 33 traces remain.
+Data: 42 real block traces, first 3M requests each: MSR-Cambridge 13, CloudPhysics 17, Alibaba 8, Meta 4
+(`results/real/baselines_*.csv`). Our ARC equals libCacheSim's ARC on all 42 (max difference 6e-17).
+Excluded by the fixed >90% one-hit rule: msr:proj_1, msr:proj_2, msr:src1_1, msr:usr_1; 38 remain.
 Split fixed in advance: within each dataset traces are sorted by name and assigned to train/test
-alternately (related neighbours cp w100-w106 and Alibaba 165/166 grouped): 21 train, 12 test.
-Each trace is cut in two halves; all numbers are hit rate on the SECOND half, cache = 5% of unique
-objects, libCacheSim native, 9 online policies.
-
-| on 12 held-out test traces (points vs ARC) | mean [95% CI over traces] | positive |
-|---|---|---|
-| always S3-FIFO (best single policy on TRAIN) | +0.23 [-0.25, +0.66] | 9/12 |
-| pick the policy that was best on the first half (causal, no ML) | **+0.70 [+0.34, +1.04]** | 10/12 |
-| oracle: best policy per trace (ceiling) | +0.78 [+0.49, +1.07] | 11/12 |
-
-Two-fold check (every trace tested once, `results/real/policy_selection_2fold.csv`): pick-from-first-half
-+0.63 [+0.28, +1.00] (21/33), always-S3-FIFO +0.29 [-0.15, +0.74], oracle +0.93 [+0.62, +1.29];
-pick minus always-S3-FIFO +0.34 [-0.01, +0.72]. Per dataset (pick vs ARC): Alibaba +1.03, Meta +1.31,
-MSR +0.60, CloudPhysics +0.15.
-Pick-from-first-half vs always-S3-FIFO (fold 0 only): +0.47 [-0.02, +1.09]. Per dataset (all traces), pick vs
-always-S3-FIFO: Meta +2.59, CloudPhysics +0.08, MSR +0.03, Alibaba -0.06.
-
+alternately (related neighbours cp w100-w106 and Alibaba 165/166 grouped); two folds swap the roles, so
+every trace is tested once. Each trace is cut in two halves; all numbers are hit rate on the SECOND half,
+cache = 5% of unique objects, libCacheSim native, 9 online policies.
+Two folds (`results/real/policy_selection_2fold.csv`): pick-from-first-half +0.70 [+0.32, +1.13] (24/38),
+oracle +0.99 [+0.63, +1.40]. The "best fixed policy on TRAIN" is S3-FIFO in fold 0 but ARC in fold 1, so
+that baseline is reported as always-S3-FIFO in the tables (+0.35 [-0.09, +0.81]). Per dataset (pick vs ARC):
+Alibaba +1.03, Meta +1.31, MSR +0.60, CloudPhysics +0.46.
 **Reading:** choosing the policy per trace from its own recent history beats ARC on held-out traces from
-four companies, and the simple causal rule already reaches about 90% of the per-trace ceiling. So a
-learned per-trace selector could add at most about 0.08 points on these traces. Selecting caches with
-simulations of candidate configurations is known (e.g. miniature simulations, Waldspurger et al., USENIX
-ATC 2017), so the mechanism is not new. Caveats: 12 test traces; the selector here simulates all 9
-policies on 1.5M requests (its cost is not measured; sampled simulation is the known way to make it cheap);
-one decision per trace, no re-selection over time.
+four sources, and full simulation also beats always-S3-FIFO (+0.35 [+0.03, +0.69]). Selecting caches by
+simulating candidate configurations is known (miniature simulations, Waldspurger et al., USENIX ATC 2017),
+so the mechanism is not new; the contribution is the cross-dataset evaluation. One decision per trace, no
+re-selection over time.
 
 ## Real MSR-Cambridge results (final for this run; see results/real/)
 Data: 13 MSR-Cambridge volumes (libCacheSim `oracleGeneral` .zst). Unit-size objects, cache = 5% of

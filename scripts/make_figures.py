@@ -142,13 +142,14 @@ if __name__ == "__main__":
 
 
 def fig_policy_selection(out):
-    sel = pd.read_csv(f"{R}/selector_test_results.csv")          # both folds, every trace tested once
-    vals = {"always S3-FIFO\n(best on train)": sel.always_S3FIFO, "learned cheap\nselector": sel.learned,
-            "pick best from first\nhalf (simulation)": sel.pick_first_half, "oracle per trace\n(ceiling)": sel.oracle}
+    sel = pd.read_csv(f"{R}/hybrid_test_results.csv")            # both folds, every trace tested once
+    vals = {"always\nS3-FIFO": sel.always_S3FIFO, "learned,\nfeatures only": sel.features_only,
+            "mini-sim 1%\n(no ML)": sel.mini_sim_1pct, "hybrid: mini-sim\n5% + learned": sel.hybrid,
+            "full simulation\n(first half)": sel.full_sim_pick, "oracle per\ntrace": sel.oracle}
     rng = np.random.default_rng(0)
-    fig, ax = plt.subplots(figsize=(7.5, 3.5))
+    fig, ax = plt.subplots(figsize=(9, 3.6))
     for i, (lab, v) in enumerate(vals.items()):
-        v = v.values
+        v = v.dropna().values
         m = v[rng.integers(0, len(v), size=(10_000, len(v)))].mean(axis=1)
         lo, hi = np.percentile(m, [2.5, 97.5])
         ax.bar(i, v.mean(), yerr=[[v.mean() - lo], [hi - v.mean()]], capsize=4,
@@ -158,7 +159,7 @@ def fig_policy_selection(out):
     ax.set_xticks(range(len(vals)))
     ax.set_xticklabels(list(vals), fontsize=8)
     ax.set_ylabel("hit rate vs ARC, second half (points)")
-    ax.set_title(f"Policy selection, {len(sel)} real traces (MSR, CloudPhysics, Alibaba, Meta), two folds\n"
+    ax.set_title(f"Policy selection on {len(sel)} real traces (MSR, CloudPhysics, Alibaba, Meta), two folds\n"
                  "bars: mean with 95% CI over traces (green = CI above zero); dots: individual traces", fontsize=8)
     fig.tight_layout()
     fig.savefig(f"{out}/fig5_policy_selection.png", dpi=160)
