@@ -23,9 +23,11 @@ of hit rate versus ARC, with 95% bootstrap confidence intervals over traces or v
    for hit rate. Even perfect window-by-window LRU-like switching would gain only about +0.7 overall.
 3. **Controlled one-dimension shifts injected into real volumes** (fig4): ARC is not further behind the
    clairvoyant optimum right after a shift than in steady state, and an LRU-like action hurts after scans.
-4. **Baselines** (fig1, `results/real/baselines_*.csv`): our ARC is bit-identical to libCacheSim's ARC on
+4. **Byte hit rate with real object sizes**: picking the policy from the first half beats ARC by +2.38
+   [+1.04, +3.97] on byte hit rate (25/33); without the Meta traces, which dominate, {lines[1][1]:+.2f} [{lines[1][2]:+.2f}, {lines[1][3]:+.2f}].
+5. **Baselines** (fig1, `results/real/baselines_*.csv`): our ARC is bit-identical to libCacheSim's ARC on
    all 37 traces; no single policy wins everywhere.
-5. **Synthetic servers** (one generator family, 8 held-out servers): the detector-gated learned re-ranker
+6. **Synthetic servers** (one generator family, 8 held-out servers): the detector-gated learned re-ranker
    gains +2.50 points in transition windows; a model-free control gets +1.52 of that.
 
 ## Reproducing
@@ -67,6 +69,22 @@ S3-FIFO, SIEVE, W-TinyLFU, LHD, and Belady (MIN, offline). Objects are unit size
 cache holds 5% of the unique objects of the trace slice (1% and 10% also reported), caches start cold, and
 each trace is cut to its first N requests (3M unless stated). The controller experiments use this
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
+
+## Byte hit rate with real object sizes (`scripts/policy_selection_headroom.py --sizes`)
+Same 33 traces, splits and protocol as the policy-selection section, but every request keeps its real size,
+the cache holds 5% of the unique BYTES of the slice, and the metric is byte hit rate. W-TinyLFU is left out:
+libCacheSim sizes its count-min sketch by the capacity in bytes and fails to allocate it.
+
+| two folds, 33 test traces, second half vs ARC (byte hit rate, points) | all datasets | without Meta (29) |
+|---|---|---|
+| always the best fixed policy on TRAIN (CACHEUS fold 0, S3-FIFO fold 1) | +1.80 [+0.58, +3.24], 20/33 | +0.48 [-0.10, +1.15], 16/29 |
+| pick the policy that was best on the first half | **+2.38 [+1.04, +3.97], 25/33** | +0.82 [+0.39, +1.31], 21/29 |
+| oracle per trace | +2.91 [+1.59, +4.49], 29/33 | +1.43 [+0.88, +2.07], 25/29 |
+
+Pick minus always-best-fixed: +0.59 [-0.08, +1.16] (all), +0.35 [-0.34, +0.90] (without Meta).
+Per dataset (pick vs ARC): Meta +13.68, Alibaba +1.33, MSR +0.82, CloudPhysics +0.49; median over all 33
+traces +0.61. With real sizes the gaps are larger than with unit sizes (ARC does not consider size), and
+the Meta traces dominate the mean, so the without-Meta column is the conservative number.
 
 ## Learned cheap policy selector (`scripts/learned_selector.py`, `results/real/selector_*`)
 Protocol fixed before results; same 33 traces, splits and second-half hit rates as the policy-selection
@@ -376,7 +394,8 @@ full 8/8 synthetic run, CloudPhysics, libCacheSim baselines (LeCaR, CACHEUS, S3-
 cache-size and k sweeps.
 
 ## Limitations
-* Real results use the first 0.5M-3M requests of each trace, unit-size objects and mostly a 5% cache.
+* Real results use the first 0.5M-3M requests of each trace and mostly a 5% cache; unit-size objects except
+  in the byte-hit-rate section.
 * Spliced shifts are artificial (a full swap between two real volumes); controlled shifts are injected.
 * Test sets are small (4 held-out MSR volumes for the controller; 33 traces over two folds for selection).
 * The simulation-based selector's cost is measured but not optimised (sampled simulation would cut it).

@@ -28,6 +28,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shiftcache.realdata import read_records  # noqa: E402
 
 POL = ["LRU", "LFU", "ARC", "LeCaR", "Cacheus", "S3FIFO", "Sieve", "WTinyLFU", "LHD"]
+# byte mode: libCacheSim's W-TinyLFU sizes its count-min sketch by the cache capacity in BYTES and fails to
+# allocate (about 1.25e9 counters for a 88 MB cache), so it is left out of byte-level runs
+POL_BYTES = [p for p in POL if p != "WTinyLFU"]
+
+
+def pols_in(df):
+    return [p for p in POL if f"h2_{p}" in df.columns]
 # expected layout (see README "Reproducing"): data/msr, data/cp, data/ali, data/meta
 DATASETS = {"msr": "data/msr/msr_*_oracleGeneral.zst", "cp": "data/cp/*.zst",
             "ali": "data/ali/*.zst", "meta": "data/meta/*.zst"}
@@ -41,11 +48,13 @@ def name_of(path, tag):
     return f"{tag}:{b[4:] if b.startswith('msr_') else b}"
 
 
-def native(lcs, path, pol, cap):
-    rp = lcs.ReaderInitParam(ignore_obj_size=True)
+def native(lcs, path, pol, cap, sizes=False):
+    """Hit rate from libCacheSim. sizes=False: unit-size objects, object hit rate (cap in objects).
+    sizes=True: real request sizes, BYTE hit rate (cap in bytes)."""
+    rp = lcs.ReaderInitParam(ignore_obj_size=not sizes)
     rd = lcs.TraceReader(trace=path, trace_type=lcs.TraceType.ORACLE_GENERAL_TRACE, reader_init_params=rp)
-    miss, _ = getattr(lcs, pol)(cache_size=cap).process_trace(rd)
-    return 1 - miss
+    miss, byte_miss = getattr(lcs, pol)(cache_size=cap).process_trace(rd)
+    return 1 - (byte_miss if sizes else miss)
 
 
 def main():
@@ -54,12 +63,15 @@ def main():
     ap.add_argument("--fraction", type=float, default=0.05)
     ap.add_argument("--tmp", default="/tmp/halves")
     ap.add_argument("--out", default="results/real")
+    ap.add_argument("--sizes", action="store_true",
+                    help="real object sizes: cache = fraction of unique BYTES, metric = byte hit rate")
     a = ap.parse_args()
     import libcachesim as lcs
+    rawname = "policy_halves_bytes_raw.csv" if a.sizes else "policy_halves_raw.csv"
     os.makedirs(a.tmp, exist_ok=True)
     T0 = time.time()
     rows, done = [], set()
-    raw = os.path.join(a.out, "policy_halves_raw.csv")
+    raw = os.path.join(a.out, rawname)
     if os.path.exists(raw):
         prev = pd.read_csv(raw)
         rows, done = prev.to_dict("records"), set(prev.trace)
@@ -73,7 +85,11 @@ def main():
             ids = rec["id"]
             _, cnt = np.unique(ids, return_counts=True)
             one_hit = float(np.mean(cnt == 1))
-            cap = max(1, int(len(cnt) * a.fraction))
+            if a.sizes:   # bytes of the unique objects (size at first occurrence)
+                _, first_idx = np.unique(ids, return_index=True)
+                cap = max(1, int(rec["size"][first_idx].astype(np.int64).sum() * a.fraction))
+            else:
+                cap = max(1, int(len(cnt) * a.fraction))
             h = len(rec) // 2
             files = []
             for part, sl in (("h1", rec[:h]), ("h2", rec[h:])):
@@ -81,19 +97,22 @@ def main():
                 sl.tofile(f)
                 files.append(f)
             r = {"dataset": tag, "trace": name, "n": len(rec), "one_hit": one_hit, "capacity": cap}
-            for pol in POL:
-                r[f"h1_{pol}"] = native(lcs, files[0], pol, cap)
-                r[f"h2_{pol}"] = native(lcs, files[1], pol, cap)
+            for pol in (POL_BYTES if a.sizes else POL):
+                r[f"h1_{pol}"] = native(lcs, files[0], pol, cap, a.sizes)
+                r[f"h2_{pol}"] = native(lcs, files[1], pol, cap, a.sizes)
             for f in files:
                 os.remove(f)
             rows.append(r)
-            pd.DataFrame(rows).to_csv(os.path.join(a.out, "policy_halves_raw.csv"), index=False)
+            pd.DataFrame(rows).to_csv(raw, index=False)
             print(f"  {name}: one-hit {one_hit:.0%} ({(time.time() - T0) / 60:.1f} min)", flush=True)
     df = pd.DataFrame(rows)
-    df.to_csv(os.path.join(a.out, "policy_halves_raw.csv"), index=False)
+    df.to_csv(raw, index=False)
     print(analyse(df))
     txt, r = analyse_2fold(df)
-    r.to_csv(os.path.join(a.out, "policy_selection_2fold.csv"), index=False)
+    r.to_csv(os.path.join(a.out, "policy_selection_bytes_2fold.csv" if a.sizes else "policy_selection_2fold.csv"),
+             index=False)
+    with open(os.path.join(a.out, "policy_selection_bytes_summary.txt" if a.sizes else "policy_selection_2fold_summary.txt"), "w") as fh:
+        fh.write(txt + "\n")
     print("\n" + txt)
 
 
@@ -128,15 +147,16 @@ def boot(x, B=10_000, seed=0):
 def fold_rows(df, fold, max_onehit=0.90):
     """Per-test-trace gains for one fold (best fixed policy chosen on that fold's TRAIN)."""
     d = split(df[df.one_hit <= max_onehit], fold)
+    P = pols_in(df)
     tr, te = d[d.split == "train"], d[d.split == "test"]
-    best = max(POL, key=lambda p: tr[f"h2_{p}"].mean())
+    best = max(P, key=lambda p: tr[f"h2_{p}"].mean())
     out = te[["dataset", "trace"]].copy()
     out["fold"], out["best_fixed"] = fold, best
     arc = te["h2_ARC"]
     out["always_best_fixed"] = (te[f"h2_{best}"] - arc).values * 100
     out["pick_first_half"] = te.apply(
-        lambda r: r[f"h2_{max(POL, key=lambda p: r[f'h1_{p}'])}"], axis=1).values * 100 - arc.values * 100
-    out["oracle"] = (te[[f"h2_{p}" for p in POL]].max(axis=1) - arc).values * 100
+        lambda r: r[f"h2_{max(P, key=lambda p: r[f'h1_{p}'])}"], axis=1).values * 100 - arc.values * 100
+    out["oracle"] = (te[[f"h2_{p}" for p in P]].max(axis=1) - arc).values * 100
     return out
 
 
@@ -156,17 +176,18 @@ def analyse_2fold(df):
 
 
 def analyse(df, max_onehit=0.90):
+    P = pols_in(df)
     df = split(df[df.one_hit <= max_onehit])
     tr, te = df[df.split == "train"], df[df.split == "test"]
-    best_fixed = max(POL, key=lambda p: tr[f"h2_{p}"].mean())   # chosen on TRAIN only
+    best_fixed = max(P, key=lambda p: tr[f"h2_{p}"].mean())   # chosen on TRAIN only
     L = [f"traces used: {len(df)} (train {len(tr)}, test {len(te)}); excluded as >90% one-hit scans: see raw CSV",
          f"best fixed policy chosen on TRAIN: {best_fixed}"]
 
     def gains(sub):
         arc = sub["h2_ARC"]
         fixed = sub[f"h2_{best_fixed}"]
-        pick = sub.apply(lambda r: r[f"h2_{max(POL, key=lambda p: r[f'h1_{p}'])}"], axis=1)
-        orc = sub[[f"h2_{p}" for p in POL]].max(axis=1)
+        pick = sub.apply(lambda r: r[f"h2_{max(P, key=lambda p: r[f'h1_{p}'])}"], axis=1)
+        orc = sub[[f"h2_{p}" for p in P]].max(axis=1)
         return {"best fixed vs ARC": (fixed - arc) * 100, "pick-from-first-half vs ARC": (pick - arc) * 100,
                 "pick-from-first-half vs best fixed": (pick - fixed) * 100,
                 "oracle per trace vs ARC": (orc - arc) * 100, "oracle per trace vs best fixed": (orc - fixed) * 100}
