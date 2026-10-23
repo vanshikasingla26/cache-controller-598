@@ -191,6 +191,43 @@ Means over the 4 held-out test volumes:
 * The hit-rate-tuned detector found 1 of 32 test shifts (it is very conservative).
 * MIN is 5-10 points above ARC in the 50k accesses after each shift: room exists, but it is not shift-specific.
 
+## Always-on vs triggered re-ranker on real data, and its overhead (`scripts/real_always_overhead.py`)
+Re-ranker (GBT) trained on TRAIN splices exactly as in `real_experiment.py` (1.56M rows, 11.8 s, 0.93 MB
+model, saved as `results/real/models_real.pkl`); one TEST splice per held-out destination volume (4 pairs).
+
+| variant (points vs ARC) | after the shift | overall | cost per access (Python) |
+|---|---|---|---|
+| ARC | 0 | 0 | 1.6 us |
+| LRU-like, detector-triggered | +3.03 | -1.79 | 5.0 us |
+| learned re-ranker, detector-triggered | +1.19 | -0.91 | 153 us |
+| learned re-ranker, always on | +2.78 | -0.30 | 422 us |
+
+On real data always-on loses less than detector-triggered, the opposite of the synthetic result: the gain
+comes from the eviction choices, and the detector (about 5 false starts per trace, on 28% of the time) makes
+it worse. Overhead: about 0.8 ms per model call, 0.33 calls per eviction when triggered and 0.97 always on,
+i.e. 95-260x ARC's per-access cost in this implementation. A deployable version needs a much cheaper model.
+
+## Combined shifts, and CACHEUS / S3-FIFO inside the shift window (`scripts/real_controlled_combos.py`)
+Same setup as the single-dimension controlled shifts (first 1M requests, change at 500k, 4 held-out test
+volumes; each dimension in its own id namespace). Points vs ARC, first 50k accesses after the shift / whole
+trace:
+
+| scenario | LRU-like, true change point | CACHEUS | S3-FIFO | MIN (after shift) |
+|---|---|---|---|---|
+| popularity 1.0 | +0.10 / +0.10 | +1.58 / +1.52 | +0.74 / +1.06 | +5.95 |
+| scan 0.3 | -1.37 / -0.32 | -0.87 / +0.24 | -0.08 / +0.70 | +7.81 |
+| tenant 0.5 | +0.78 / +0.04 | -0.67 / -0.55 | -2.05 / +0.17 | +7.54 |
+| popularity + scan | -0.62 / -0.10 | -1.10 / +0.47 | -0.41 / +1.08 | +2.47 |
+| popularity + tenant | +1.34 / +0.09 | -0.52 / -0.52 | -2.47 / +0.40 | +3.33 |
+| scan + tenant | +1.52 / +0.13 | +0.40 / -1.39 | -1.26 / +0.45 | +5.65 |
+
+An LRU-like action helps when tenant traffic is mixed in and hurts when a scan is involved. No adaptive
+policy is uniformly better than ARC right after a shift: S3-FIFO wins overall in every scenario but loses up
+to 2.5 points right after tenant-mixing shifts; CACHEUS wins after a popularity shift and loses on tenant mixes.
+The detector found at most 1 of 4 shifts per scenario. Which policy is best depends on the kind of shift,
+consistent with the policy-selection result. Not covered: request-rate changes (they do not change eviction
+order in an object-count cache without time-based expiry) and object-size changes (see byte-level results).
+
 ## Earlier findings (synthetic and the small CloudPhysics sample)
 1. **Synthetic, 8 held-out servers.** Adaptive detector (tuned on the 8 train servers only) matches
    the fixed one: precision 1.00, recall 0.97, mean delay 1,667 vs 1,757 accesses, and it is on for

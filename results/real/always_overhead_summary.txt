@@ -1,0 +1,9 @@
+REAL MSR splices, one per held-out destination volume (4 pairs); mean over pairs
+                d_transition_hr  d_overall_hr  us_per_access  calls_per_evict  us_per_call  gate_frac  false_starts
+policy                                                                                                             
+ARC                       0.000         0.000          1.616              NaN          NaN      0.276          5.25
+LRU-gated[det]            3.030        -1.788          4.971            0.000        0.000      0.276          5.25
+gbt[det]                  1.188        -0.913        152.909            0.329      808.543      0.276          5.25
+gbt[always]               2.778        -0.296        421.921            0.973      818.129      0.276          5.25
+
+re-ranker: GBT trained on 1,564,464 rows in 11.8 s; serialized model 0.93 MB; gate kind fixed
