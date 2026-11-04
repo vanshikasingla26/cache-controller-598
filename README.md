@@ -93,6 +93,36 @@ cache holds 5% of the unique objects of the trace slice (1% and 10% also reporte
 each trace is cut to its first N requests (3M unless stated). The controller experiments use this
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
 
+## Policy switching with real mechanics and measured switching cost (`scripts/switching.py`)
+Feedback on Progress Report 1 asked to define the switching mechanics and to measure the switching cost by
+simulation. Each trace (first 3M requests, 38 traces, cache 10% of unique objects) is cut into six windows
+of 500k requests. At each boundary the rule picks the policy with the best hit rate on the window that just
+ended (causal, no learning) and switches if it differs. Two mechanics, fixed in advance: **carry** reads the
+old policy's exact resident set (libCacheSim lookup without side effects) and inserts it into the new policy
+oldest first, giving objects seen at least twice in the last window one extra uncounted access so
+frequency-based policies treat them as hot; **replay** starts the new policy empty and replays the last
+window uncounted. Switching cost of a switch into B = hit rate of B run continuously from the start minus
+hit rate of the switched cache, in the window right after the switch.
+
+| windows 2-6, relative miss-ratio reduction vs ARC | mean [95% CI over traces] | positive |
+|---|---|---|
+| always S3-FIFO | +1.91% [+0.80, +3.05] | 28/38 |
+| switch each window, carry | +0.84% [-0.26, +1.95] | 23/38 |
+| switch each window, replay | +0.49% [-0.77, +1.79] | 19/38 |
+| best policy per window, no switching cost (ceiling) | +5.86% [+3.53, +9.35] | 38/38 |
+
+Measured cost per switch: +0.80 hit-rate points [+0.27, +1.40] with carry, +0.96 [+0.45, +1.58] with
+replay; 2.9 switches per trace on average. Carry minus always-S3-FIFO: -1.07% [-2.16, +0.00]; replay:
+-1.42% [-2.64, -0.27].
+**Reading:** switching has a real cost of about one hit-rate point in the window after each switch, and
+choosing by last window's winner switches too often and too noisily, so it loses to always running
+S3-FIFO. The ceiling (+5.9%) says the room is there; the selection rule is the bottleneck. A switcher has
+to switch only when the predicted gain clearly beats the measured cost. Darwin (Chen et al., SIGCOMM 2023)
+attacks the selection side for CDN admission settings: it clusters traffic features offline, keeps a small
+set of expert configurations per cluster, and picks among them online with a neural bandit, using networks
+that predict how experts it is not running would do. Our setting differs (eviction policies, block traces)
+and our cost measurements give the threshold such a selector has to clear.
+
 ## Leave-one-source-out, relative miss-ratio reduction, by cache size (`scripts/loso_eval.py`, fig6)
 Feedback on Progress Report 1 asked for leave-one-source-out (LOSO) as the main generalization test and
 for effects as relative miss-ratio reduction, broken down by cache size. Here everything learned or chosen
@@ -457,6 +487,8 @@ cache-size and k sweeps.
 * Y. Zhang et al. SIEVE is Simpler than LRU. NSDI 2024.
 * G. Einziger, R. Friedman, B. Manes. TinyLFU: A Highly Efficient Cache Admission Policy. ACM TOS 2017.
 * C. Waldspurger et al. Cache Modeling and Optimization using Miniature Simulations. USENIX ATC 2017.
+* J. Chen, N. Sharma, T. Khan, S. Liu, B. Chang, A. Akella, S. Shakkottai, R. K. Sitaraman. Darwin: Flexible
+  Learning-based CDN Caching. ACM SIGCOMM 2023.
 * libCacheSim (https://github.com/1a1a11a/libCacheSim) and the cacheMon cache_dataset collection
   (https://github.com/cacheMon/cache_dataset).
 * Traces: D. Narayanan, A. Donnelly, A. Rowstron. Write Off-Loading (MSR-Cambridge). FAST 2008;
