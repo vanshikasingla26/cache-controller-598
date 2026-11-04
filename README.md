@@ -93,6 +93,35 @@ cache holds 5% of the unique objects of the trace slice (1% and 10% also reporte
 each trace is cut to its first N requests (3M unless stated). The controller experiments use this
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
 
+## Cost-aware learned switcher (`scripts/cost_aware_switcher.py`)
+The previous two sections say the room is there but "last window's best" is a bad rule. This switcher
+predicts instead, and only moves when the predicted gain beats the measured switching cost. Leave-one-source-
+out, cache 10%, same windows, carry mechanics and metric. Per held-out source and using only the other
+three: a Darwin-style small set of K = 6 experts (default S3-FIFO plus the five candidates that most often
+win a window on the training traces), one regressor per expert predicting its next-window gain over default
+S3-FIFO from this window's expert gains plus the cheap workload features (model chosen by leave-one-trace-out
+CV; gradient boosting won in every fold), and the switching cost measured on the training traces (0.19 to 1.11
+points). Start from default S3-FIFO; move to the expert with the largest predicted gain over the current one
+only if that gain exceeds the cost. The experts' hit rates on the last window are assumed known (shadow
+simulation of 6 experts, the same information the naive rule uses).
+
+| windows 2-6, relative miss-ratio reduction vs ARC | mean [95% CI over 38 traces] | vs default S3-FIFO | switches per trace |
+|---|---|---|---|
+| S3-FIFO default | +1.91% [+0.80, +3.01] | n/a | 0 |
+| naive hybrid (last window's best, all 17 candidates) | +1.40% [+0.10, +3.07] | -0.51% [-1.83, +0.95] | about 3 |
+| learned, no cost rule | +1.40% [+0.05, +2.90] | -0.51% [-1.53, +0.47] | 2.2 |
+| learned, cost-aware | +1.59% [+0.28, +3.04] | -0.32% [-1.31, +0.63] | 1.3 |
+| ceiling: best candidate per window, no cost | +6.11% [+3.80, +9.71] | n/a | n/a |
+
+Learned cost-aware minus default by held-out source: Alibaba +0.00%, CloudPhysics -0.10%, Meta +0.00%,
+MSR -1.16%; it beats the default on 10 of 38 traces. Leave-one-trace-out CV gains on the training sources
+were small (+0.01 to +0.38 points).
+**Reading:** the cost rule does what it should (fewer switches, smaller loss than switching freely), but the
+model cannot predict next-window winners well enough to beat simply running S3-FIFO, so it mostly ends up
+staying put. With about 150 training rows per fold this is a prediction problem, not a mechanics problem:
+the ceiling over the default is +4.2%, and reaching any of it needs much better next-window prediction
+(more training traces, or Darwin-style cross-expert prediction instead of shadow hit rates).
+
 ## Tuning S3-FIFO per window vs switching policies (`scripts/s3fifo_tuning.py`, fig7)
 Feedback on Progress Report 1 suggested tuning the near-best policy's parameters per window instead of
 switching among policies, or a mix of both. Same 38 traces, windows, causal rule ("best on the window that
