@@ -93,6 +93,31 @@ cache holds 5% of the unique objects of the trace slice (1% and 10% also reporte
 each trace is cut to its first N requests (3M unless stated). The controller experiments use this
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
 
+## Tuning S3-FIFO per window vs switching policies (`scripts/s3fifo_tuning.py`, fig7)
+Feedback on Progress Report 1 suggested tuning the near-best policy's parameters per window instead of
+switching among policies, or a mix of both. Same 38 traces, windows, causal rule ("best on the window that
+just ended"), carry mechanics and metric as the switching section. Settings: S3-FIFO small-queue ratio in
+{0.02, 0.1, 0.25, 0.5} x promotion threshold in {1, 2} (libCacheSim's default is 0.1 / 2).
+
+| windows 2-6, cache 10%, relative miss-ratio reduction vs ARC | mean [95% CI] | vs default S3-FIFO |
+|---|---|---|
+| S3-FIFO default | +1.91% [+0.80, +3.05] | n/a |
+| S3-FIFO tuned once (best setting on window 1, kept) | +1.76% [+0.39, +3.24] | -0.15% [-1.03, +0.76] |
+| S3-FIFO re-tuned every window | +1.62% [+0.38, +3.05] | -0.29% [-1.32, +0.78] |
+| policy switching | +0.84% [-0.26, +1.95] | -1.07% [-2.16, +0.00] |
+| hybrid (policies and settings) | +1.40% [+0.05, +3.10] | -0.51% [-1.85, +0.89] |
+| ceiling: best setting per window, no cost | +3.62% [+2.55, +4.87] | n/a |
+| ceiling: best of everything per window, no cost | +6.11% [+3.77, +9.60] | n/a |
+
+The setting that wins window 1 is spread across the grid (small-queue ratio 0.02 on 18 traces, 0.5 on 10,
+the default 0.1/2 on 1), yet keeping it does no better than the default afterwards.
+**Reading:** re-tuning within S3-FIFO loses much less than switching policies (-0.29% vs -1.07% against the
+default), which supports the feedback's point that staying inside one policy avoids most of the switching
+cost. But with a "last window's best" rule none of the adaptive strategies beats plain S3-FIFO, while the
+ceilings (+1.7% from settings alone, +4.2% from everything, over the default) show there is room. The
+missing piece is a selector that predicts the next window instead of echoing the last one, and that only
+changes when the expected gain beats the measured cost.
+
 ## Policy switching with real mechanics and measured switching cost (`scripts/switching.py`)
 Feedback on Progress Report 1 asked to define the switching mechanics and to measure the switching cost by
 simulation. Each trace (first 3M requests, 38 traces, cache 10% of unique objects) is cut into six windows

@@ -212,3 +212,32 @@ def fig_loso(out):
 
 if __name__ == "__main__":
     fig_loso("results/figures")
+
+
+def fig_tuning(out):
+    s = pd.read_csv(f"{R}/s3fifo_tuning_summary_f0.1.csv")
+    cols = [("S3FIFO_default", "S3-FIFO\ndefault"), ("S3FIFO_tuned_once", "S3-FIFO\ntuned once"),
+            ("S3FIFO_retuned", "S3-FIFO\nre-tuned\nper window"), ("policy_switching", "policy\nswitching"),
+            ("hybrid", "hybrid\n(policies +\nsettings)"), ("ideal_settings", "ceiling:\nsettings"),
+            ("ideal_all", "ceiling:\neverything")]
+    rng = np.random.default_rng(0)
+    fig, ax = plt.subplots(figsize=(9, 3.4))
+    for i, (c, lab) in enumerate(cols):
+        v = s[c].values
+        m = v[rng.integers(0, len(v), size=(10_000, len(v)))].mean(axis=1)
+        lo, hi = np.percentile(m, [2.5, 97.5])
+        ax.bar(i, v.mean(), yerr=[[v.mean() - lo], [hi - v.mean()]], capsize=4,
+               color="tab:gray" if c.startswith("ideal") else ("tab:green" if lo > 0 else "tab:red"),
+               hatch="//" if c.startswith("ideal") else None)
+    ax.axhline(0, color="k", lw=0.8)
+    ax.set_xticks(range(len(cols)))
+    ax.set_xticklabels([l for _, l in cols], fontsize=8)
+    ax.set_ylabel("miss-ratio reduction vs ARC (%)")
+    ax.set_title("38 real traces, cache 10%, windows 2-6 of 500k requests; hatched = cost-free ceilings", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(f"{out}/fig7_tuning_vs_switching.png", dpi=160)
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    fig_tuning("results/figures")
