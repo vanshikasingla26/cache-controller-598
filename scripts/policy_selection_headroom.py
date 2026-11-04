@@ -67,7 +67,8 @@ def main():
                     help="real object sizes: cache = fraction of unique BYTES, metric = byte hit rate")
     a = ap.parse_args()
     import libcachesim as lcs
-    rawname = "policy_halves_bytes_raw.csv" if a.sizes else "policy_halves_raw.csv"
+    suffix = "" if abs(a.fraction - 0.05) < 1e-9 else f"_f{a.fraction:g}"   # 5% keeps the original names
+    rawname = ("policy_halves_bytes_raw" if a.sizes else "policy_halves_raw") + suffix + ".csv"
     os.makedirs(a.tmp, exist_ok=True)
     T0 = time.time()
     rows, done = [], set()
@@ -109,9 +110,9 @@ def main():
     df.to_csv(raw, index=False)
     print(analyse(df))
     txt, r = analyse_2fold(df)
-    r.to_csv(os.path.join(a.out, "policy_selection_bytes_2fold.csv" if a.sizes else "policy_selection_2fold.csv"),
-             index=False)
-    with open(os.path.join(a.out, "policy_selection_bytes_summary.txt" if a.sizes else "policy_selection_2fold_summary.txt"), "w") as fh:
+    stem = ("policy_selection_bytes" if a.sizes else "policy_selection") + suffix
+    r.to_csv(os.path.join(a.out, stem + "_2fold.csv"), index=False)
+    with open(os.path.join(a.out, stem + "_2fold_summary.txt"), "w") as fh:
         fh.write(txt + "\n")
     print("\n" + txt)
 

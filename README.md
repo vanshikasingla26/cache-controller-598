@@ -77,6 +77,9 @@ python -u scripts/hybrid_selector.py --out results/real                         
 python -u scripts/real_always_overhead.py --dir data/msr --out results/real               # ~45 min
 python -u scripts/real_controlled_combos.py --dir data/msr --out results/real             # ~20 min
 python -u scripts/policy_selection_headroom.py --sizes --out results/real --tmp /tmp/hb   # ~20 min
+python -u scripts/policy_selection_headroom.py --fraction 0.01 --out results/real --tmp /tmp/h01  # ~15 min
+python -u scripts/policy_selection_headroom.py --fraction 0.10 --out results/real --tmp /tmp/h10  # ~15 min
+python -u scripts/loso_eval.py --out results/real                                         # ~5 min
 python scripts/make_figures.py --out results/figures
 python -u scripts/experiment.py && python -u scripts/lru_gate_control.py                  # synthetic
 ```
@@ -89,6 +92,35 @@ S3-FIFO, SIEVE, W-TinyLFU, LHD, and Belady (MIN, offline). Objects are unit size
 cache holds 5% of the unique objects of the trace slice (1% and 10% also reported), caches start cold, and
 each trace is cut to its first N requests (3M unless stated). The controller experiments use this
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
+
+## Leave-one-source-out, relative miss-ratio reduction, by cache size (`scripts/loso_eval.py`, fig6)
+Feedback on Progress Report 1 asked for leave-one-source-out (LOSO) as the main generalization test and
+for effects as relative miss-ratio reduction, broken down by cache size. Here everything learned or chosen
+(the best fixed policy, the learned selectors, their model choice) uses three trace sources and is tested
+on the fourth; every one of the 38 traces is tested once. Metric: (miss ratio of ARC - miss ratio of the
+selector) / miss ratio of ARC, on the second half of each trace, mean [95% CI over traces].
+
+| selector | cache 1% | cache 5% | cache 10% |
+|---|---|---|---|
+| always S3-FIFO | -0.21% [-0.81, +0.39] | +0.74% [-0.01, +1.50] | +0.41% [-0.60, +1.54] |
+| best fixed on the training sources | -1.35% [-2.02, -0.71] | +0.74% [-0.01, +1.50] | +0.41% [-0.60, +1.54] |
+| learned, features only | n/a | -0.19% [-1.34, +0.79] | n/a |
+| hybrid (5% mini-sim + learned) | n/a | +0.64% [-0.05, +1.34] | n/a |
+| pick from first half (simulation) | +1.09% [-0.14, +2.89] | **+1.59% [+0.88, +2.33]** | -0.06% [-2.44, +1.57] |
+| oracle per trace | +1.51% [+0.55, +3.17] | +2.08% [+1.44, +2.79] | +2.35% [+1.24, +3.95] |
+
+Pick-from-first-half minus always-S3-FIFO: +1.30% [+0.15, +2.82] at 1%, +0.85% [+0.20, +1.53] at 5%,
+-0.47% [-3.44, +1.35] at 10%. At 1% the "best fixed on training sources" is not S3-FIFO and loses to ARC
+(see `results/real/loso_results.csv`). ARC's median miss ratio is 0.60 / 0.52 / 0.50 at 1 / 5 / 10%, so
+a 0.70-point hit-rate gain at 5% is a 1.6% cut in misses. Per held-out source at 5%: always-S3-FIFO cuts
+misses on Alibaba (+2.18%), CloudPhysics (+0.63%) and MSR (+1.15%) but makes Meta worse (-2.56%), where both
+the simulation selector (+2.63%) and the learned hybrid (+2.69%) recover the full gain.
+
+**Reading:** under the stricter LOSO split, choosing the policy from the first half beats both ARC and
+always-S3-FIFO at small and medium caches. At 10% it does not: the room (oracle +2.35%) is largest there,
+but the policy that wins the first half often does not win the second, which points at re-selecting over
+time rather than once per trace. The learned hybrid matches the simulation selector on the held-out Meta
+traces, where a single fixed policy fails, but does not beat always-S3-FIFO overall.
 
 ## Byte hit rate with real object sizes (`scripts/policy_selection_headroom.py --sizes`)
 Same 38 traces, folds and protocol, but every request keeps its real size, the cache holds 5% of the unique

@@ -168,3 +168,47 @@ def fig_policy_selection(out):
 
 if __name__ == "__main__":
     fig_policy_selection("results/figures")
+
+
+def fig_loso(out):
+    d = pd.read_csv(f"{R}/loso_results.csv")
+    sels = [("always_S3FIFO", "always S3-FIFO"), ("best_fixed_on_train", "best fixed\n(train sources)"),
+            ("pick_first_half", "pick from\nfirst half"), ("oracle", "oracle")]
+    sizes = sorted(d["size"].unique())
+    rng = np.random.default_rng(0)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 3.4), gridspec_kw={"width_ratios": [1.3, 1]})
+    ax = axes[0]
+    w = 0.8 / len(sizes)
+    for j, f in enumerate(sizes):
+        for i, (sel, _) in enumerate(sels):
+            v = d[(d["size"] == f) & (d.selector == sel)].rel_mr_reduction.values
+            m = v[rng.integers(0, len(v), size=(10_000, len(v)))].mean(axis=1)
+            lo, hi = np.percentile(m, [2.5, 97.5])
+            ax.bar(i + (j - 1) * w, v.mean(), w, yerr=[[v.mean() - lo], [hi - v.mean()]], capsize=2,
+                   color=["tab:blue", "tab:orange", "tab:purple"][j], label=f"cache {f:.0%}" if i == 0 else None)
+    ax.axhline(0, color="k", lw=0.8)
+    ax.set_xticks(range(len(sels)))
+    ax.set_xticklabels([l for _, l in sels], fontsize=8)
+    ax.set_ylabel("miss-ratio reduction vs ARC (%)")
+    ax.set_title("leave-one-source-out, 38 traces, by cache size", fontsize=9)
+    ax.legend(fontsize=7)
+    ax = axes[1]
+    d5 = d[d["size"] == 0.05]
+    srcs = sorted(d5.source.unique())
+    sel2 = [("always_S3FIFO", "always S3-FIFO"), ("hybrid", "hybrid (ML)"), ("pick_first_half", "pick from first half")]
+    w2 = 0.8 / len(sel2)
+    for j, (sel, lab) in enumerate(sel2):
+        ax.bar(np.arange(len(srcs)) + (j - 1) * w2,
+               [d5[(d5.source == s) & (d5.selector == sel)].rel_mr_reduction.mean() for s in srcs], w2, label=lab)
+    ax.axhline(0, color="k", lw=0.8)
+    ax.set_xticks(range(len(srcs)))
+    ax.set_xticklabels({"ali": "Alibaba", "cp": "CloudPhysics", "meta": "Meta", "msr": "MSR"}.get(s, s) for s in srcs)
+    ax.set_title("held-out source, cache 5% (mean over its traces)", fontsize=9)
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    fig.savefig(f"{out}/fig6_loso_by_size.png", dpi=160)
+    plt.close(fig)
+
+
+if __name__ == "__main__":
+    fig_loso("results/figures")
