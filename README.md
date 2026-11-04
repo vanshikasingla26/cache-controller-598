@@ -168,6 +168,12 @@ hit rate of the switched cache, in the window right after the switch.
 Measured cost per switch: +0.80 hit-rate points [+0.27, +1.40] with carry, +0.96 [+0.45, +1.58] with
 replay; 2.9 switches per trace on average. Carry minus always-S3-FIFO: -1.07% [-2.16, +0.00]; replay:
 -1.42% [-2.64, -0.27].
+Same experiment at cache 5% (38 traces): always S3-FIFO +1.50% [+0.50, +2.44], switch with carry +1.09%
+[+0.25, +1.90], switch with replay +1.56% [+0.58, +2.56], ceiling +4.78% [+3.23, +6.97]; replay minus
+always-S3-FIFO +0.06% [-1.00, +1.11]. Measured cost per switch is indistinguishable from zero at 5% (carry
++0.04 points [-1.33, +1.09], replay -0.42 [-2.19, +0.75]) but about 0.8-1.0 points at 10%: the larger the
+cache, the more state a new policy has to rebuild, so switching gets more expensive as the cache grows.
+
 **Reading:** switching has a real cost of about one hit-rate point in the window after each switch, and
 choosing by last window's winner switches too often and too noisily, so it loses to always running
 S3-FIFO. The ceiling (+5.9%) says the room is there; the selection rule is the bottleneck. A switcher has
