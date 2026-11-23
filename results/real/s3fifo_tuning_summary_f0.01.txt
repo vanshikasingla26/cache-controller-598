@@ -1,0 +1,12 @@
+cache 1%: 38 traces, windows 2-6; relative miss-ratio reduction vs ARC (%), mean [95% CI over traces], positive/n
+  S3FIFO_default     +0.06% [-0.55, +0.63]   25/38
+  S3FIFO_tuned_once  +0.60% [+0.11, +1.07]   30/38
+  S3FIFO_retuned     +0.73% [+0.37, +1.12]   27/38
+  policy_switching   +1.03% [+0.14, +2.45]   26/38
+  hybrid             +1.06% [+0.42, +2.00]   30/38
+  ideal_settings     +1.06% [+0.73, +1.43]   34/38
+  ideal_all          +2.72% [+1.55, +4.64]   38/38
+  S3FIFO_tuned_once minus S3FIFO_default: +0.55% [-0.07, +1.15]
+  S3FIFO_retuned minus S3FIFO_default: +0.67% [+0.23, +1.19]
+  policy_switching minus S3FIFO_default: +0.97% [-0.04, +2.42]
+  hybrid minus S3FIFO_default: +1.00% [+0.23, +2.00]
