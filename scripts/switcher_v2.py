@@ -36,16 +36,20 @@ from scripts.policy_selection_headroom import POL, boot  # noqa: E402
 from scripts.s3fifo_tuning import NWIN, W, make, run_plan  # noqa: E402
 
 RATES = (0.01, 0.05)
+# S3-FIFO's 2% small queue needs a cache of at least 50 objects; below that the sampling rate is raised
+# so the miniature cache stays at 50 (only binds at the 1% cache size; no 10% result changes)
+MIN_MINI = 50
 
 
 def shadow_estimates(lcs, ids, cap, rate):
     """per-window hit rate of every candidate on a hash-sampled stream with a scaled cache"""
     arr = np.asarray(ids, dtype=np.uint64)
+    rate = max(rate, MIN_MINI / cap)   # SHARDS-style floor: the miniature cache keeps >= MIN_MINI objects
     keep = sample_mask(arr, rate)
     idx = np.flatnonzero(keep)
     sub = arr[keep].tolist()
     win = (idx // W).astype(int)
-    c = max(1, int(round(cap * rate)))
+    c = max(MIN_MINI, int(round(cap * rate)))
     R = lcs.Request
     out, t0 = {}, time.perf_counter()
     for cand in CANDS:
