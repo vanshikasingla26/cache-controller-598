@@ -130,7 +130,9 @@ def main():
         test = [t for t in traces if src[t] == held]
         wins = pd.Series([max(CANDS, key=lambda c: cont[t][c][w]) for t in train for w in range(NWIN)])
         experts = [DEFAULT] + [c for c in wins.value_counts().index if c != DEFAULT][:K - 1]
-        cost = switch_costs(train) * 100
+        cost_raw = switch_costs(train) * 100
+        # a negative measured cost is noise around zero; left as is it would reward switching, so clamp it
+        cost = max(0.0, cost_raw)
         for t in test:   # estimate fidelity on the experts
             for name in ("mini1", "mini5"):
                 for w in range(NWIN):
@@ -165,7 +167,7 @@ def main():
                     g += [Y[i, k] for i, k in zip(np.flatnonzero(m), Pm.argmax(axis=1))]
                 cv[mname] = float(np.mean(g))
             best = max(cv, key=cv.get)
-            info.append(f"held-out {held} {est_name}/h{hist}: model {best} (CV {cv[best]:+.2f}), cost {cost:.2f} pts")
+            info.append(f"held-out {held} {est_name}/h{hist}: model {best} (CV {cv[best]:+.2f}), cost {cost:.2f} pts (measured {cost_raw:+.2f})")
             for t in test:
                 pred = fit_k(make_models()[best], X, Y, np.array([xrow(t, w) for w in range(NWIN - 1)]))
                 plan = [DEFAULT]
