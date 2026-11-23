@@ -1,0 +1,10 @@
+cache 1%: 38 traces, windows 2-6; relative miss-ratio reduction vs ARC (%), mean [95% CI over traces], positive/n
+  always_S3FIFO   +0.06% [-0.55, +0.63]   25/38
+  switch_carry    +1.03% [+0.14, +2.45]   26/38
+  switch_replay   +1.12% [+0.28, +2.25]   26/38
+  ideal_no_cost   +2.50% [+1.33, +4.43]   38/38
+  switch_carry minus always_S3FIFO: +0.97% [-0.04, +2.42]
+  switch_replay minus always_S3FIFO: +1.07% [+0.16, +2.21]
+  measured cost per switch (carry): +0.10 hit-rate points in the window after the switch [-0.65, +0.73] (38 traces with >= 1 switch)
+  measured cost per switch (replay): -0.08 hit-rate points in the window after the switch [-0.78, +0.57] (38 traces with >= 1 switch)
+  switches per trace: mean 2.4, traces with none 0

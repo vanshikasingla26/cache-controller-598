@@ -1,0 +1,1 @@
+per-request work relative to ARC alone (setup subtracted, 3 traces): 6 full shadows 12.8x, 6 shadows at 1% 0.25x, 6 shadows at 5% 1.48x

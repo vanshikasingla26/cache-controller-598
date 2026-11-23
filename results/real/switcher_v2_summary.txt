@@ -1,0 +1,30 @@
+SWITCHER v2, leave-one-source-out, cache 10%, windows 2-6; relative miss-ratio reduction vs ARC (%), mean [95% CI over 38 traces]
+  S3FIFO_default +1.91% [+0.80, +3.05]
+  exact_h1     +1.50% [+0.17, +3.00]   minus default -0.41% [-1.45, +0.54]   better on 10/38, worse on 9/38, switches 1.29
+  exact_h2     +1.05% [+0.02, +2.08]   minus default -0.86% [-1.69, -0.16]   better on 7/38, worse on 17/38, switches 1.76
+  mini1_h1     +1.70% [+0.40, +3.16]   minus default -0.21% [-1.03, +0.61]   better on 9/38, worse on 13/38, switches 1.13
+  mini1_h2     +1.36% [+0.18, +2.60]   minus default -0.55% [-1.30, +0.08]   better on 11/38, worse on 12/38, switches 1.18
+  mini5_h1     +1.22% [-0.08, +2.68]   minus default -0.69% [-1.47, +0.09]   better on 6/38, worse on 20/38, switches 1.42
+  estimate fidelity mini1: same winner among 6 experts 76% of windows, Spearman 0.84, mean abs error 5.53 hit-rate points
+  estimate fidelity mini5: same winner among 6 experts 82% of windows, Spearman 0.90, mean abs error 2.79 hit-rate points
+  overhead (native libCacheSim, 6 traces, 3M requests, 6 experts): ARC alone 0.63 s; exact shadows 9.52 s (15.2x ARC); mini 1% 0.939 s (1.50x ARC); mini 5% 1.596 s (2.55x ARC)
+held-out ali exact/h1: model gbr (CV +0.11), cost 0.90 pts
+held-out ali exact/h2: model gbr (CV -0.02), cost 0.90 pts
+held-out ali mini1/h1: model gbr (CV +0.16), cost 0.90 pts
+held-out ali mini1/h2: model gbr (CV +0.11), cost 0.90 pts
+held-out ali mini5/h1: model gbr (CV +0.08), cost 0.90 pts
+held-out cp exact/h1: model gbr (CV +0.15), cost 0.19 pts
+held-out cp exact/h2: model ridge (CV +0.07), cost 0.19 pts
+held-out cp mini1/h1: model gbr (CV +0.22), cost 0.19 pts
+held-out cp mini1/h2: model gbr (CV +0.11), cost 0.19 pts
+held-out cp mini5/h1: model gbr (CV +0.23), cost 0.19 pts
+held-out meta exact/h1: model gbr (CV +0.02), cost 0.92 pts
+held-out meta exact/h2: model gbr (CV -0.16), cost 0.92 pts
+held-out meta mini1/h1: model gbr (CV +0.03), cost 0.92 pts
+held-out meta mini1/h2: model gbr (CV +0.04), cost 0.92 pts
+held-out meta mini5/h1: model gbr (CV +0.15), cost 0.92 pts
+held-out msr exact/h1: model gbr (CV +0.40), cost 1.11 pts
+held-out msr exact/h2: model gbr (CV +0.02), cost 1.11 pts
+held-out msr mini1/h1: model gbr (CV +0.11), cost 1.11 pts
+held-out msr mini1/h2: model gbr (CV -0.07), cost 1.11 pts
+held-out msr mini5/h1: model ridge (CV +0.27), cost 1.11 pts
