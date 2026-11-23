@@ -1,7 +1,10 @@
-numpy>=1.24
-pandas>=2.0
-matplotlib>=3.7
-scikit-learn>=1.3
-libcachesim>=0.3
-zstandard>=0.22
-pytest>=7
+# Exact versions used for the results in results/real. scikit-learn's GBR subsampling changed between
+# 1.8 and 1.9, which changed 10 of 38 learned-switcher plans, so keep these pinned when reproducing.
+numpy==2.5.3
+pandas==3.0.5
+matplotlib==3.11.2
+scikit-learn==1.9.1
+scipy==1.18.1
+libcachesim==0.3.5
+zstandard==0.25.0
+pytest==9.1.1

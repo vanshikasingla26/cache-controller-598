@@ -67,12 +67,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="results/real")
     ap.add_argument("--tmp", default="/tmp/switcher_v2")
+    ap.add_argument("--fraction", type=float, default=0.10, help="cache size as a fraction of unique objects")
     a = ap.parse_args()
     import libcachesim as lcs
     os.makedirs(a.tmp, exist_ok=True)
     T0 = time.time()
-    tune = pd.read_csv(os.path.join(a.out, "s3fifo_tuning_raw_f0.1.csv")).set_index("trace")
-    sw = pd.read_csv(os.path.join(a.out, "switching_raw_f0.1.csv")).set_index("trace")
+    fr = f"{a.fraction:g}"
+    sfx = "" if fr == "0.1" else f"_f{fr}"   # 10% keeps the original file names
+    tune = pd.read_csv(os.path.join(a.out, f"s3fifo_tuning_raw_f{fr}.csv")).set_index("trace")
+    sw = pd.read_csv(os.path.join(a.out, f"switching_raw_f{fr}.csv")).set_index("trace")
     feats = pd.read_csv(os.path.join(a.out, "selector_features.csv"))
     fcols = [c for c in feats.columns if c not in ("trace", "split", "window", "feat_s")]
     F = {(r.trace, int(r.window)): r[fcols].values.astype(float) for _, r in feats.iterrows()}
@@ -82,7 +85,7 @@ def main():
     P = paths()
 
     # ---- 1. sampled shadow estimates (resumable)
-    ep = os.path.join(a.out, "shadow_estimates.csv")
+    ep = os.path.join(a.out, f"shadow_estimates{sfx}.csv")
     est_rows = pd.read_csv(ep).to_dict("records") if os.path.exists(ep) else []
     have = {(r["trace"], r["rate"]) for r in est_rows}
     for t in traces:
@@ -177,13 +180,13 @@ def main():
                 rows.append({"trace": t, "source": held, "variant": f"{est_name}_h{hist}", "plan": key[1],
                              "switches": sum(plan[w] != plan[w - 1] for w in range(1, NWIN)),
                              **{f"w{w + 1}": hr[w] for w in range(NWIN)}})
-            pd.DataFrame(rows).to_csv(os.path.join(a.out, "switcher_v2_raw.csv"), index=False)
+            pd.DataFrame(rows).to_csv(os.path.join(a.out, f"switcher_v2_raw{sfx}.csv"), index=False)
             print(f"  fold {held} variant {est_name}/h{hist} done ({(time.time() - T0) / 60:.1f} min)", flush=True)
-    pd.DataFrame(fid).to_csv(os.path.join(a.out, "shadow_fidelity.csv"), index=False)
+    pd.DataFrame(fid).to_csv(os.path.join(a.out, f"shadow_fidelity{sfx}.csv"), index=False)
 
-    # ---- 3. overhead, native libCacheSim time on 6 traces (one per source plus two), 10% cache
+    # ---- 3. overhead, native libCacheSim time on 6 traces (one per source plus two); 10% run only
     ov = []
-    sample_traces = [t for t in traces if t.startswith(("msr:", "cp:"))][:2] + \
+    sample_traces = [] if sfx else [t for t in traces if t.startswith(("msr:", "cp:"))][:2] + \
                     [t for t in traces if t.startswith("ali:")][:2] + [t for t in traces if t.startswith("meta:")][:2]
     for t in sample_traces:
         rec = read_records(P[t], W * NWIN)
@@ -203,7 +206,8 @@ def main():
                 native_seconds(lcs, fn, x, c) for x in [DEFAULT, "WTinyLFU", "ARC", "LHD",
                                                         "S3FIFO(s=0.02,t=2)", "S3FIFO(s=0.1,t=1)"])
         ov.append(r)
-    pd.DataFrame(ov).to_csv(os.path.join(a.out, "switcher_overhead.csv"), index=False)
+    if not sfx:
+        pd.DataFrame(ov).to_csv(os.path.join(a.out, "switcher_overhead.csv"), index=False)
 
     # ---- 4. summary
     df = pd.DataFrame(rows)
@@ -219,9 +223,9 @@ def main():
             o[f"sw_{v}"] = r.switches
         out.append(o)
     s = pd.DataFrame(out)
-    s.to_csv(os.path.join(a.out, "switcher_v2_summary.csv"), index=False)
+    s.to_csv(os.path.join(a.out, f"switcher_v2_summary{sfx}.csv"), index=False)
     vnames = [f"{e}_h{h}" for e, h in VARIANTS]
-    L = ["SWITCHER v2, leave-one-source-out, cache 10%, windows 2-6; relative miss-ratio reduction vs ARC (%), "
+    L = [f"SWITCHER v2, leave-one-source-out, cache {a.fraction:.0%}, windows 2-6; relative miss-ratio reduction vs ARC (%), "
          f"mean [95% CI over {len(s)} traces]"]
     m, lo, hi = boot(s.S3FIFO_default.values)
     L.append(f"  {'S3FIFO_default':<12} {m:+.2f}% [{lo:+.2f}, {hi:+.2f}]")
@@ -236,14 +240,15 @@ def main():
         L.append(f"  estimate fidelity {name}: same winner among 6 experts {g.same_winner.mean():.0%} of windows, "
                  f"Spearman {g.spearman.mean():.2f}, mean abs error {g.abs_err_pts.mean():.2f} hit-rate points")
     o = pd.DataFrame(ov)
-    L.append(f"  overhead (native libCacheSim, {len(o)} traces, 3M requests, 6 experts): ARC alone {o.arc_s.mean():.2f} s; "
+    if len(o):
+      L.append(f"  overhead (native libCacheSim, {len(o)} traces, 3M requests, 6 experts): ARC alone {o.arc_s.mean():.2f} s; "
              f"exact shadows {o.shadows_exact6_s.mean():.2f} s ({o.shadows_exact6_s.mean() / o.arc_s.mean():.1f}x ARC); "
              + "; ".join(f"mini {int(r * 100)}% {o[f'shadows_mini{int(r * 100)}_6_s'].mean():.3f} s "
                          f"({o[f'shadows_mini{int(r * 100)}_6_s'].mean() / o.arc_s.mean():.2f}x ARC)" for r in RATES))
     L += info
     txt = "\n".join(L)
     print(txt)
-    with open(os.path.join(a.out, "switcher_v2_summary.txt"), "w") as fh:
+    with open(os.path.join(a.out, f"switcher_v2_summary{sfx}.txt"), "w") as fh:
         fh.write(txt + "\n")
 
 

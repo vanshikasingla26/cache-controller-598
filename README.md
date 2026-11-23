@@ -80,6 +80,14 @@ python -u scripts/policy_selection_headroom.py --sizes --out results/real --tmp 
 python -u scripts/policy_selection_headroom.py --fraction 0.01 --out results/real --tmp /tmp/h01  # ~15 min
 python -u scripts/policy_selection_headroom.py --fraction 0.10 --out results/real --tmp /tmp/h10  # ~15 min
 python -u scripts/loso_eval.py --out results/real                                         # ~5 min
+for f in 0.01 0.05 0.10; do
+  python -u scripts/switching.py --fraction $f --out results/real                         # ~40 min each
+  python -u scripts/s3fifo_tuning.py --fraction $f --out results/real                     # ~60 min each
+  python -u scripts/switcher_v2.py --fraction $f --out results/real                       # ~40 min each
+done
+python -u scripts/cost_aware_switcher.py --out results/real                               # ~10 min
+python -u scripts/shadow_overhead.py --out results/real                                   # ~5 min
+python scripts/workload_analysis.py --out results/real                                    # seconds
 python scripts/make_figures.py --out results/figures
 python -u scripts/experiment.py && python -u scripts/lru_gate_control.py                  # synthetic
 ```
@@ -92,6 +100,64 @@ S3-FIFO, SIEVE, W-TinyLFU, LHD, and Belady (MIN, offline). Objects are unit size
 cache holds 5% of the unique objects of the trace slice (1% and 10% also reported), caches start cold, and
 each trace is cut to its first N requests (3M unless stated). The controller experiments use this
 repository's Python ARC / LRU / LFU / Belady; ARC is checked against libCacheSim on every trace.
+
+## Class feedback on the Nov 5 presentation: overhead, cache size, workloads, scans
+Four questions came back from the class: the switcher assumes all six experts run as full shadows in the
+background, so what does that cost; does the result change with cache size; which workloads does adaptation
+help; and do the conclusions depend on dropping the scan-heavy traces.
+
+**Sampled shadows** (`scripts/switcher_v2.py`). The switcher's input is each expert's hit rate on the window
+that just ended. Instead of full shadows we run each expert on a 1% or 5% hash sample of object IDs with the
+cache scaled by the same rate (miniature simulation, SHARDS-style sampling), retrain on those estimates and
+evaluate leave-one-source-out exactly as before. Labels stay exact. Cache 10%, windows 2-6, 38 traces:
+
+| switcher input | vs ARC | minus default S3-FIFO | better / worse on | switches |
+|---|---|---|---|---|
+| default S3-FIFO | +1.91% [+0.80, +3.05] | n/a | n/a | 0 |
+| exact shadows, last window | +1.50% [+0.17, +3.00] | -0.41% [-1.45, +0.54] | 10 / 9 | 1.29 |
+| exact shadows, two windows of history | +1.05% [+0.02, +2.08] | -0.86% [-1.69, -0.16] | 7 / 17 | 1.76 |
+| 1% sampled shadows, last window | +1.70% [+0.40, +3.16] | -0.21% [-1.03, +0.61] | 9 / 13 | 1.13 |
+| 1% sampled shadows, two windows | +1.36% [+0.18, +2.60] | -0.55% [-1.30, +0.08] | 11 / 12 | 1.18 |
+| 5% sampled shadows, last window | +1.22% [-0.08, +2.68] | -0.69% [-1.47, +0.09] | 6 / 20 | 1.42 |
+
+1% samples pick the same winner among the six experts in 76% of windows (Spearman 0.84 with the exact hit
+rates), 5% samples in 82% (0.90). Adding history hurts in both cases: with about 150 training rows per fold
+the extra features add variance, not signal.
+
+**Overhead** (`scripts/shadow_overhead.py`). Native libCacheSim time over 3M requests on three traces, with the
+one-time cache allocation subtracted (libCacheSim allocates a large hash table per cache, which otherwise
+dominates the sampled runs). Per-request work relative to running ARC alone: six full shadows 12.8x, six
+shadows at 5% 1.48x, six shadows at 1% 0.25x. Sampling at 1% makes the controller's background work about
+50 times cheaper with no loss in the decisions above. The learned part (six small GBR predictions per window
+boundary) is negligible next to this.
+
+**Switching at a 1% cache** (`scripts/switching.py --fraction 0.01`). Same mechanics as the section below.
+
+| windows 2-6, cache 1% | vs ARC | positive |
+|---|---|---|
+| always S3-FIFO | +0.06% [-0.55, +0.63] | 25/38 |
+| switch each window, carry | +1.03% [+0.14, +2.45] | 26/38 |
+| switch each window, replay | +1.12% [+0.28, +2.25] | 26/38 |
+| ceiling, no switching cost | +2.50% [+1.33, +4.43] | 38/38 |
+
+Replay minus always S3-FIFO: +1.07% [+0.16, +2.21]. The measured cost per switch is about zero at 1% (carry
++0.10 points, replay -0.08), so even the naive rule wins at small caches. Together with 5% (tie) and 10%
+(loss), switching cost grows with cache size and decides whether switching pays.
+
+**Learned switcher at 1% and 5%.** Running now (`switcher_v2.py --fraction 0.01/0.05`); results will be added here.
+
+**When does adaptation pay off?** (`scripts/workload_analysis.py`). Spearman correlation over 38 traces between
+window-mean workload statistics and the gain over always running S3-FIFO. The one-hit share is the strongest
+signal: -0.54 against the per-window room at 10% and -0.26 against the gain the selector realizes at 5%;
+accesses per object goes the other way (+0.47, +0.23). Split into thirds by one-hit share, the room at 10%
+per window is +7.76% for the reuse-heavy third and about +2% for the other two, and the realized 5% gain
+falls from +1.26% to +0.19%. Adaptation pays on workloads with reuse to exploit; on mostly one-hit traffic
+every policy misses the same requests.
+
+**Scan-exclusion sensitivity.** Our rule drops 4 of 42 MSR slices with more than 90% one-hit objects. Keeping
+them changes no conclusion: picking from the first half minus always S3-FIFO is +1.30% vs +1.20% (all 42)
+at 1%, +0.85% vs +0.80% at 5%, -0.47% vs -0.35% at 10%. On the four scan traces themselves every method is
+within 0.8% of ARC, because ARC's hit rate there is close to zero.
 
 ## Cost-aware learned switcher (`scripts/cost_aware_switcher.py`)
 The previous two sections say the room is there but "last window's best" is a bad rule. This switcher
