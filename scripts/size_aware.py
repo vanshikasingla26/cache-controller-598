@@ -3,12 +3,12 @@ Re-run the non-learned strategies with each request's real size, cache capacity 
 
 Per trace (same 38 traces, first 3M requests, six 500k windows):
   capacity = fraction x total bytes of the unique objects (first size seen per object)
-  1. run each of the 17 candidates (8 S3-FIFO settings + 9 policies) continuously with per-request get(),
+  1. run each of the 16 candidates (8 S3-FIFO settings + 8 policies) continuously with per-request get(),
      keeping per-request hits, to get every candidate's object and byte hit rate in every window
-  2. strategies, as in Progress Report 2 Table 4, decided on object hit rate and executed with carry mechanics
+  2. strategies, as in Progress Report 2 Table 4 (16 candidates, no W-TinyLFU, see below), decided on object hit rate and executed with carry mechanics
      (resident objects copied oldest-first with their last size, extra touch for objects seen >= 2 times):
        S3FIFO_default, retune (best S3-FIFO setting last window), polswitch (best of 9 policies, starts at ARC),
-       hybrid (best of all 17), margin (hybrid that switches only past a margin chosen leave-one-source-out from
+       hybrid (best of all 16), margin (hybrid that switches only past a margin chosen leave-one-source-out from
        margin_switcher.MARGINS; switching cost measured here from the executed hybrid plans of training traces,
        clamped at zero), ceiling (best candidate per window, no switching cost)
 Metrics, windows 2-6: relative reduction vs ARC of the object miss ratio and of the byte miss ratio.
@@ -32,6 +32,10 @@ from scripts.margin_switcher import MARGINS  # noqa: E402
 from scripts.window_sensitivity import reactive_plan  # noqa: E402
 
 N, W, NWIN = 3_000_000, 500_000, 6
+# W-TinyLFU is left out: libCacheSim sizes its counting Bloom filter from the capacity, which here is in bytes
+# (it tries to allocate up to 2^31 counters), and the Python binding exposes no sketch-size parameter.
+CANDS = [c for c in CANDS if c != "WTinyLFU"]
+POL = [p for p in POL if p != "WTinyLFU"]
 STRATS = ("retune", "polswitch", "hybrid", "margin")
 
 
