@@ -1,0 +1,11 @@
+MARGIN SWITCHER, leave-one-source-out, cache 5%, windows 2-6; relative miss-ratio reduction vs ARC (%), mean [95% CI over 38 traces]
+  S3FIFO_default  +1.50% [+0.50, +2.43]
+  hybrid_m0       +1.23% [+0.35, +2.11]
+  margin          +0.83% [-0.19, +1.81]
+  hybrid_m0 minus S3FIFO_default: -0.27% [-1.15, +0.65]   better on 15/38, worse on 23/38
+  margin minus S3FIFO_default: -0.67% [-1.26, -0.14]   better on 9/38, worse on 14/38
+  switches per trace (margin rule): 1.76
+held-out ali: cost 0.00 pts, margin 8 pts; estimated train score m=0: 46.05, m=0.5: 45.96, m=1: 45.87, m=2: 45.85, m=4: 45.66, m=8: 46.05
+held-out cp: cost 0.00 pts, margin 0.5 pts; estimated train score m=0: 42.82, m=0.5: 42.83, m=1: 42.78, m=2: 42.68, m=4: 42.36, m=8: 42.71
+held-out meta: cost 0.00 pts, margin 8 pts; estimated train score m=0: 45.17, m=0.5: 45.08, m=1: 44.99, m=2: 45.00, m=4: 45.04, m=8: 45.39
+held-out msr: cost 0.00 pts, margin 0 pts; estimated train score m=0: 48.24, m=0.5: 48.11, m=1: 48.01, m=2: 47.99, m=4: 47.78, m=8: 47.78

@@ -153,11 +153,12 @@ Replay minus always S3-FIFO: +1.07% [+0.16, +2.21]. The measured cost per switch
 | re-tune S3-FIFO settings each window | **+0.67%** [+0.23, +1.19] | -0.00% [-0.78, +0.78] | -0.29% [-1.32, +0.78] |
 | switch policies each window | +0.97% [-0.04, +2.42] | -0.40% [-1.32, +0.52] | -1.07% [-2.16, +0.00] |
 | settings and policies, last window's best | **+1.00%** [+0.23, +2.00] | -0.27% [-1.16, +0.63] | -0.51% [-1.85, +0.89] |
+| same, switch only past a margin chosen on training sources (`margin_switcher.py`) | **+1.23%** [+0.34, +2.44] | **-0.67%** [-1.26, -0.14] | -0.40% [-1.12, +0.27] |
 | learned cost-aware, full shadows | -0.47% [-1.44, +0.37] | **-0.74%** [-1.42, -0.09] | -0.41% [-1.45, +0.54] |
 | learned cost-aware, 1% shadows | -0.37% [-1.23, +0.35] | **-1.52%** [-2.74, -0.57] | -0.21% [-1.03, +0.61] |
 | hindsight ceiling (17 candidates per window) | +2.66% | +3.47% | +4.20% |
 
-At a 1% cache the simple reactive rules beat the default; the learned switcher does not at any size, even
+At a 1% cache the simple reactive rules beat the default, best of all the margin rule (margin of 0 to 8 hit-rate points chosen per held-out source on the training sources, then executed exactly; it switches 0.6 times per trace at 10% but its margin flips between 0 and 8 across folds at 5%, where it loses); the learned switcher does not at any size, even
 though its leave-one-trace-out score on the training sources is positive in every fold (+0.35 to +1.75
 points with full shadows). It does not transfer to a held-out source. Two fixes came out of this run:
 (1) at 5% the switching cost measured on the training traces was negative in all four folds (noise around
