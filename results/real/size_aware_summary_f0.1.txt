@@ -1,0 +1,17 @@
+REAL OBJECT SIZES, cache 10% of unique bytes, LOSO for the margin, windows 2-6, 38 traces; mean [95% CI over traces]
+  object miss ratio: default S3-FIFO vs ARC +6.78% [+4.38, +9.32] (38 traces); strategies minus default S3-FIFO:
+    retune     -0.57% [-1.63, +0.41]  better on 14/38, switches 3.21
+    polswitch  +1.51% [-0.50, +3.58]  better on 22/38, switches 2.34
+    hybrid     +1.77% [+0.09, +3.55]  better on 22/38, switches 2.84
+    margin     +1.27% [+0.04, +2.63]  better on 20/38, switches 1.24
+    ceiling    +6.27% [+4.75, +7.98]  better on 38/38
+  byte miss ratio: default S3-FIFO vs ARC +4.39% [+2.62, +6.31] (38 traces); strategies minus default S3-FIFO:
+    retune     -0.19% [-1.15, +0.76]  better on 16/38, switches 3.21
+    polswitch  -8.14% [-12.07, -4.65]  better on 9/38, switches 2.34
+    hybrid     -7.08% [-10.83, -3.77]  better on 9/38, switches 2.84
+    margin     -4.83% [-8.21, -2.15]  better on 7/38, switches 1.24
+    ceiling    +2.74% [+1.96, +3.74]  better on 38/38
+held-out ali: switching cost 1.56 pts, margin 1
+held-out cp: switching cost 1.10 pts, margin 1
+held-out meta: switching cost 1.78 pts, margin 2
+held-out msr: switching cost 1.72 pts, margin 1

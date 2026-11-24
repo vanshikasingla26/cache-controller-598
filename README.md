@@ -340,6 +340,28 @@ vs ARC): Meta +13.68, CloudPhysics +2.06, Alibaba +1.33, MSR +0.82; median over 
 **Reading:** with real sizes ARC (which ignores size) is clearly beaten, but simply using S3-FIFO captures
 most of the gain; per-trace selection adds nothing significant.
 
+## Switchers with real object sizes (`scripts/size_aware.py`, `results/real/size_aware_*`)
+Same 38 traces, first 3M requests, six 500k windows, but every request keeps its real size and the cache holds
+1% or 10% of the unique bytes. Sixteen candidates (W-TinyLFU left out, same reason as above). Strategies decide
+on object hit rate and are executed with carry mechanics; the margin is chosen leave-one-source-out. Numbers are
+strategy minus default S3-FIFO, in relative miss-ratio reduction vs ARC, windows 2-6, mean [95% CI over traces].
+
+| | 1%, object | 1%, byte | 10%, object | 10%, byte |
+|---|---|---|---|---|
+| default S3-FIFO vs ARC | +6.69 [+4.54, +8.93] | +4.45 [+2.94, +6.11] | +6.78 [+4.38, +9.32] | +4.39 [+2.62, +6.31] |
+| re-tune S3-FIFO | +0.37 [-0.05, +0.80] | +0.03 [-0.35, +0.43] | -0.57 [-1.63, +0.41] | -0.19 [-1.15, +0.76] |
+| switch policies | +0.56 [-0.99, +2.13] | -3.45 [-5.73, -1.62] | +1.51 [-0.50, +3.58] | -8.14 [-12.07, -4.65] |
+| settings and policies | +0.74 [-0.81, +2.25] | -3.19 [-5.51, -1.32] | +1.77 [+0.09, +3.55] | -7.08 [-10.83, -3.77] |
+| with a margin | +0.85 [-0.67, +2.33] | -2.40 [-4.65, -0.68] | +1.27 [+0.04, +2.63] | -4.83 [-8.21, -2.15] |
+| ceiling (per window, object) | +3.22 [+2.16, +4.49] | +0.95 [+0.60, +1.37] | +6.27 [+4.75, +7.98] | +2.74 [+1.96, +3.74] |
+
+**Reading:** with real sizes the picture changes. Switching on object hit rate now helps the object miss ratio at
+10% (the opposite of the unit-size result), but it costs a lot of byte miss ratio at both sizes. The reason is
+LHD: it ranks objects by hits per byte, so it keeps small objects, wins most windows on object hit rate (the hybrid runs LHD in 101 of
+190 windows at 1% and 108 at 10%) and gives up bytes. A switcher with sizes has to
+pick its target metric explicitly; re-tuning S3-FIFO alone is neutral on both. Measured switching cost per
+held-out source was 0.88 to 1.25 points at 1% and 1.10 to 1.78 at 10%.
+
 ## Learned cheap policy selector (`scripts/learned_selector.py`, `results/real/selector_*`)
 Protocol fixed before results; same traces, folds and second-half hit rates as the policy-selection
 section. Features = one pass over the last 500k requests (unique ratio, one-hit share, top-1%/10% access
