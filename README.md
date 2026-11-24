@@ -168,6 +168,27 @@ now clamped at zero (2.1 switches, -0.74%). The unclamped run is kept as `switch
 queue, so the sampling rate is raised for those traces to keep each miniature cache at 50 objects or more;
 the sampled winner matches the exact one in 59% of windows at 1% (76% at 10%).
 
+**Switch-or-stay gate** (`scripts/gate_switcher.py`). Instead of six regressors, one logistic-regression
+classifier decides whether moving to last window's winner pays off next window. Trained on the test cache size
+only it gains +0.52% [+0.05, +1.06] at 1% and ties at 5% (+0.23%) and 10% (-0.29% [-0.64, -0.00]). Trained on
+all three cache sizes pooled (3x the rows) it is worse at 1% and 5%; a margin chosen on pooled sizes is worse at
+10%. The switching decision is specific to the cache size.
+
+**Window length** (`scripts/window_sensitivity.py`). Simple rules with 250k, 500k and 1M-request windows over
+the same 3M requests, difference from default S3-FIFO:
+
+| | 1%: 250k | 1%: 500k | 1%: 1M | 10%: 250k | 10%: 500k | 10%: 1M |
+|---|---|---|---|---|---|---|
+| re-tune S3-FIFO | **+0.64%** | **+0.67%** | **+0.61%** | -0.94% | -0.29% | +0.14% |
+| switch policies | **+0.65%** | **+1.24%** | +1.10% | **-1.62%** | -0.74% | -0.16% |
+| settings and policies | **+0.86%** | **+1.06%** | +0.58% | **-1.84%** | -0.54% | +0.43% |
+| with margin (LOSO) | **+0.89%** | **+1.06%** | **+0.64%** | **-1.70%** | -0.33% | +0.08% |
+
+Bold: 95% interval excludes zero. The 1% win holds at every window length; at 10% nothing wins, and short windows
+pay the switching cost more often. (The 500k column re-runs the plans and differs slightly from the tables above
+because CACHEUS, LHD and LeCaR are randomized in libCacheSim: CACHEUS's per-window hit rate changes by up to 0.9
+between identical runs on one trace. The other 14 candidates reproduce the native hit rates exactly.)
+
 **When does adaptation pay off?** (`scripts/workload_analysis.py`). Spearman correlation over 38 traces between
 window-mean workload statistics and the gain over always running S3-FIFO. The one-hit share is the strongest
 signal: -0.54 against the per-window room at 10% and -0.26 against the gain the selector realizes at 5%;

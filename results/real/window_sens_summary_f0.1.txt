@@ -1,0 +1,23 @@
+WINDOW-LENGTH SENSITIVITY, cache 10%, first 3M requests, windows 2..N; difference in relative miss-ratio reduction vs ARC from default S3-FIFO (%), mean [95% CI over traces]
+  per-request hit vectors vs native 500k-window hit rates: max abs diff 0.91958
+  W=250k (12 windows, 38 traces): default S3-FIFO vs ARC +1.76% [+0.68, +2.86]
+    retune     -0.94% [-2.04, +0.17]  better on 13/38, switches 5.68
+    polswitch  -1.62% [-3.07, -0.20]  better on 15/38, switches 5.68
+    hybrid     -1.84% [-3.05, -0.66]  better on 12/38, switches 6.74
+    margin     -1.70% [-2.68, -0.77]  better on 9/38, switches 4.21
+    ceiling    +3.57% [+2.77, +4.54]  better on 38/38
+    margins chosen: {'ali': np.float64(1.0), 'cp': np.float64(0.0), 'meta': np.float64(8.0), 'msr': np.float64(1.0)}
+  W=500k (6 windows, 38 traces): default S3-FIFO vs ARC +1.91% [+0.80, +3.05]
+    retune     -0.29% [-1.32, +0.78]  better on 15/38, switches 3.13
+    polswitch  -0.74% [-1.95, +0.37]  better on 20/38, switches 2.82
+    hybrid     -0.54% [-1.99, +0.91]  better on 17/38, switches 3.37
+    margin     -0.33% [-1.51, +0.90]  better on 11/38, switches 1.18
+    ceiling    +3.09% [+2.29, +4.05]  better on 38/38
+    margins chosen: {'ali': np.float64(8.0), 'cp': np.float64(0.5), 'meta': np.float64(4.0), 'msr': np.float64(2.0)}
+  W=1000k (3 windows, 38 traces): default S3-FIFO vs ARC +1.90% [+0.68, +3.14]
+    retune     +0.14% [-0.78, +1.10]  better on 15/38, switches 1.47
+    polswitch  -0.16% [-1.53, +1.21]  better on 16/38, switches 1.39
+    hybrid     +0.43% [-0.73, +1.57]  better on 22/38, switches 1.58
+    margin     +0.08% [-0.69, +0.92]  better on 3/38, switches 0.26
+    ceiling    +2.86% [+1.97, +3.91]  better on 38/38
+    margins chosen: {'ali': np.float64(2.0), 'cp': np.float64(2.0), 'meta': np.float64(4.0), 'msr': np.float64(1.0)}
