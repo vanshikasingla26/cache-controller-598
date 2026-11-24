@@ -144,7 +144,28 @@ Replay minus always S3-FIFO: +1.07% [+0.16, +2.21]. The measured cost per switch
 +0.10 points, replay -0.08), so even the naive rule wins at small caches. Together with 5% (tie) and 10%
 (loss), switching cost grows with cache size and decides whether switching pays.
 
-**Learned switcher at 1% and 5%.** Running now (`switcher_v2.py --fraction 0.01/0.05`); results will be added here.
+**Simple rules vs the learned switcher at 1%, 5% and 10%** (`s3fifo_tuning.py` and `switcher_v2.py` with
+`--fraction`). Difference in relative miss-ratio reduction against default S3-FIFO, windows 2-6, 38 traces:
+
+| minus default S3-FIFO | cache 1% | cache 5% | cache 10% |
+|---|---|---|---|
+| default S3-FIFO itself, vs ARC | +0.06% | +1.50% | +1.91% |
+| re-tune S3-FIFO settings each window | **+0.67%** [+0.23, +1.19] | -0.00% [-0.78, +0.78] | -0.29% [-1.32, +0.78] |
+| switch policies each window | +0.97% [-0.04, +2.42] | -0.40% [-1.32, +0.52] | -1.07% [-2.16, +0.00] |
+| settings and policies, last window's best | **+1.00%** [+0.23, +2.00] | -0.27% [-1.16, +0.63] | -0.51% [-1.85, +0.89] |
+| learned cost-aware, full shadows | -0.47% [-1.44, +0.37] | **-0.74%** [-1.42, -0.09] | -0.41% [-1.45, +0.54] |
+| learned cost-aware, 1% shadows | -0.37% [-1.23, +0.35] | **-1.52%** [-2.74, -0.57] | -0.21% [-1.03, +0.61] |
+| hindsight ceiling (17 candidates per window) | +2.66% | +3.47% | +4.20% |
+
+At a 1% cache the simple reactive rules beat the default; the learned switcher does not at any size, even
+though its leave-one-trace-out score on the training sources is positive in every fold (+0.35 to +1.75
+points with full shadows). It does not transfer to a held-out source. Two fixes came out of this run:
+(1) at 5% the switching cost measured on the training traces was negative in all four folds (noise around
+zero), which turned the cost rule into a bonus for switching (3.3 switches per trace, -1.03%); the cost is
+now clamped at zero (2.1 switches, -0.74%). The unclamped run is kept as `switcher_v2_*_noclamp.*`.
+(2) At a 1% cache a 1% sample leaves S3-FIFO with a cache of a few dozen objects, too small for its 2% small
+queue, so the sampling rate is raised for those traces to keep each miniature cache at 50 objects or more;
+the sampled winner matches the exact one in 59% of windows at 1% (76% at 10%).
 
 **When does adaptation pay off?** (`scripts/workload_analysis.py`). Spearman correlation over 38 traces between
 window-mean workload statistics and the gain over always running S3-FIFO. The one-hit share is the strongest
