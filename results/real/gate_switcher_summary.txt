@@ -1,0 +1,17 @@
+SWITCH-OR-STAY GATE, leave-one-source-out, windows 2-6; difference in relative miss-ratio reduction vs ARC from default S3-FIFO (%), mean [95% CI over traces]
+  cache 1% (38 traces)
+    gate_pooled    -0.05% [-0.55, +0.32]   better on 12, worse on 12, switches 1.71
+    gate_same      +0.52% [+0.05, +1.06]   better on 13, worse on 9, switches 1.55
+    margin_pooled  +0.99% [-0.10, +2.78]   better on 11, worse on 8, switches 1.37
+  cache 5% (38 traces)
+    gate_pooled    -0.17% [-0.89, +0.53]   better on 15, worse on 16, switches 1.97
+    gate_same      +0.23% [-0.52, +1.01]   better on 16, worse on 16, switches 2.13
+    margin_pooled  -0.29% [-0.86, +0.22]   better on 14, worse on 13, switches 1.47
+  cache 10% (38 traces)
+    gate_pooled    +0.10% [-0.51, +0.98]   better on 4, worse on 9, switches 0.66
+    gate_same      -0.29% [-0.64, -0.00]   better on 5, worse on 8, switches 0.82
+    margin_pooled  -0.89% [-1.82, -0.06]   better on 15, worse on 18, switches 1.76
+held-out ali: pooled rows 305 (45% pay), margin_pooled 0.5 pts, costs 1% 0.04, 5% 0.00, 10% 0.90
+held-out cp: pooled rows 216 (46% pay), margin_pooled 0.5 pts, costs 1% 0.31, 5% 0.00, 10% 0.19
+held-out meta: pooled rows 336 (44% pay), margin_pooled 8 pts, costs 1% 0.06, 5% 0.00, 10% 0.92
+held-out msr: pooled rows 265 (51% pay), margin_pooled 0.5 pts, costs 1% 0.00, 5% 0.00, 10% 1.11
