@@ -63,6 +63,9 @@ data/meta/block_traces_<i>.oracleGeneral.bin.zst  1-4
 ```
 `python scripts/make_slice.py <file> <out.bin> --n 3000000` cuts a large trace down if needed.
 
+**Reproduce everything:** `JOBS=2 ./reproduce.sh` runs every step below in order into `results/repro` and lists
+any summary that differs from `results/real` (about 20 hours on one core).
+
 **Run** (single core; approximate times):
 ```bash
 python -u scripts/real_baselines.py --dir data/msr --out results/real                     # ~15 min

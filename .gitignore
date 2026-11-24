@@ -221,3 +221,7 @@ __marimo__/
 data/
 *.npz
 .DS_Store
+
+# output of reproduce.sh
+results/repro*/
+results/real/logs/
